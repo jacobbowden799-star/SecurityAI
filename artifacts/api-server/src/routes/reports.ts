@@ -12,7 +12,7 @@ import {
   GetReportParams,
   DeleteReportParams,
 } from "@workspace/api-zod";
-import { generateReportSummary } from "../lib/scanner";
+import { generateReportSummary } from "../lib/website-scanner";
 
 const router: IRouter = Router();
 

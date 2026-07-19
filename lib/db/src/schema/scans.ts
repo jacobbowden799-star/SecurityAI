@@ -2,11 +2,11 @@ import { pgTable, serial, text, integer, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-// ─── Scans ───────────────────────────────────────────────────────────────────
+// ─── Scans ────────────────────────────────────────────────────────────────────
 export const scansTable = pgTable("scans", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  targetUrl: text("target_url"),           // the website URL that was scanned
+  targetUrl: text("target_url"),
   scanType: text("scan_type").notNull(),   // quick | full
   status: text("status").notNull().default("pending"),
   securityScore: integer("security_score"),
@@ -15,6 +15,10 @@ export const scansTable = pgTable("scans", {
   highCount: integer("high_count").notNull().default(0),
   mediumCount: integer("medium_count").notNull().default(0),
   lowCount: integer("low_count").notNull().default(0),
+  // Before/after comparison fields
+  baselineScanId: integer("baseline_scan_id"),    // previous scan of same URL
+  baselineScore: integer("baseline_score"),        // score at time of baseline
+  scoreDelta: integer("score_delta"),              // current - baseline (positive = improvement)
   createdAt: timestamp("created_at").defaultNow().notNull(),
   completedAt: timestamp("completed_at"),
 });
@@ -39,7 +43,7 @@ export const findingsTable = pgTable("findings", {
   severity: text("severity").notNull(),
   category: text("category").notNull(),
   lineNumber: integer("line_number"),
-  codeSnippet: text("code_snippet"),   // repurposed: holds the raw header value observed
+  codeSnippet: text("code_snippet"),   // holds the raw observed value for context
   recommendation: text("recommendation").notNull(),
   cweId: text("cwe_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

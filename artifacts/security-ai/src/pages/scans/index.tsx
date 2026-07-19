@@ -1,6 +1,6 @@
 import { useListScans } from "@workspace/api-client-react";
 import { Link, useLocation } from "wouter";
-import { Globe, Zap, ShieldCheck, Plus, Search } from "lucide-react";
+import { Globe, Zap, ShieldCheck, Plus, Search, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { ScoreGauge } from "@/components/score-gauge";
 import { formatDate, cn } from "@/lib/utils";
 
@@ -14,12 +14,12 @@ const ScanTypeIcon = ({ type, className }: { type: string; className?: string })
 
 const StatusBadge = ({ status }: { status: string }) => {
   const styles =
-    {
+    ({
       completed: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
       running:   "text-blue-400 bg-blue-400/10 border-blue-400/20 animate-pulse",
       failed:    "text-red-400 bg-red-400/10 border-red-400/20",
       pending:   "text-gray-400 bg-gray-400/10 border-gray-400/20",
-    }[status.toLowerCase()] ?? "text-gray-400 bg-gray-400/10 border-gray-400/20";
+    } as Record<string, string>)[status.toLowerCase()] ?? "text-gray-400 bg-gray-400/10 border-gray-400/20";
 
   return (
     <span className={cn("px-2 py-0.5 rounded text-[10px] font-mono uppercase border tracking-wider", styles)}>
@@ -27,6 +27,21 @@ const StatusBadge = ({ status }: { status: string }) => {
     </span>
   );
 };
+
+function DeltaCell({ delta }: { delta?: number | null }) {
+  if (delta === null || delta === undefined) return <span className="text-muted-foreground font-mono text-xs">—</span>;
+  const up = delta > 0;
+  const flat = delta === 0;
+  return (
+    <span className={cn(
+      "flex items-center gap-1 font-mono text-xs font-bold",
+      up ? "text-emerald-400" : flat ? "text-gray-400" : "text-red-400"
+    )}>
+      {up ? <TrendingUp className="w-3 h-3" /> : flat ? <Minus className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+      {up ? `+${delta}` : delta}
+    </span>
+  );
+}
 
 export default function Scans() {
   const { data: scans, isLoading } = useListScans();
@@ -36,18 +51,15 @@ export default function Scans() {
     <div className="p-8 max-w-7xl mx-auto space-y-6">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight mb-1">Scan History</h1>
+          <h1 className="text-3xl font-bold tracking-tight mb-1">Audit History</h1>
           <p className="text-muted-foreground font-mono text-sm">
-            All website security scans and their results
+            All external security audits and their results
           </p>
         </div>
         <Link href="/scans/new">
-          <div
-            data-testid="button-new-scan"
-            className="bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md font-bold font-mono tracking-tight flex items-center gap-2 cursor-pointer shadow-[0_0_15px_rgba(20,184,100,0.2)]"
-          >
+          <div className="bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md font-bold font-mono tracking-tight flex items-center gap-2 cursor-pointer shadow-[0_0_15px_rgba(20,184,100,0.2)]">
             <Plus className="w-4 h-4" />
-            NEW SCAN
+            NEW AUDIT
           </div>
         </Link>
       </div>
@@ -62,6 +74,7 @@ export default function Scans() {
                 <th className="px-6 py-4 font-semibold">Depth</th>
                 <th className="px-6 py-4 font-semibold">Status</th>
                 <th className="px-6 py-4 font-semibold text-center">Score</th>
+                <th className="px-6 py-4 font-semibold text-center">Change</th>
                 <th className="px-6 py-4 font-semibold text-center">Findings</th>
                 <th className="px-6 py-4 font-semibold">Date</th>
               </tr>
@@ -69,7 +82,7 @@ export default function Scans() {
             <tbody className="divide-y divide-border">
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center">
+                  <td colSpan={8} className="px-6 py-12 text-center">
                     <div className="flex justify-center">
                       <div className="w-6 h-6 border-t-2 border-primary border-solid rounded-full animate-spin" />
                     </div>
@@ -77,10 +90,10 @@ export default function Scans() {
                 </tr>
               ) : scans?.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">
+                  <td colSpan={8} className="px-6 py-12 text-center text-muted-foreground">
                     <div className="flex flex-col items-center gap-3">
                       <Search className="w-8 h-8 opacity-20" />
-                      <p>No scans yet. Enter a website URL to run your first scan.</p>
+                      <p>No audits yet. Enter a website URL to run your first external security audit.</p>
                     </div>
                   </td>
                 </tr>
@@ -88,14 +101,13 @@ export default function Scans() {
                 scans?.map((scan) => (
                   <tr
                     key={scan.id}
-                    data-testid={`scan-row-${scan.id}`}
                     onClick={() => setLocation(`/scans/${scan.id}`)}
                     className="hover:bg-muted/30 cursor-pointer transition-colors group"
                   >
                     <td className="px-6 py-4 font-medium text-foreground group-hover:text-primary transition-colors">
                       {scan.name}
                     </td>
-                    <td className="px-6 py-4 text-xs text-muted-foreground font-mono max-w-[200px] truncate">
+                    <td className="px-6 py-4 text-xs text-muted-foreground font-mono max-w-[180px] truncate">
                       {scan.targetUrl ?? "—"}
                     </td>
                     <td className="px-6 py-4">
@@ -109,6 +121,9 @@ export default function Scans() {
                     </td>
                     <td className="px-6 py-2 flex justify-center">
                       <ScoreGauge score={scan.securityScore} size="sm" />
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <DeltaCell delta={scan.scoreDelta} />
                     </td>
                     <td className="px-6 py-4 text-center">
                       <div className="flex items-center justify-center gap-1.5">

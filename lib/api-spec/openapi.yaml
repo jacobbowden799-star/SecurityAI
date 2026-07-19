@@ -1,25 +1,17 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: SecurityAI - Defensive cybersecurity analysis platform API
+  description: SecurityAI — Defensive cybersecurity analysis platform API
 servers:
   - url: /api
-    description: Base API path
 tags:
   - name: health
-    description: Health operations
   - name: scans
-    description: Security scan operations
   - name: findings
-    description: Security finding operations
   - name: reports
-    description: Security report operations
   - name: chat
-    description: AI assistant chat operations
   - name: dashboard
-    description: Dashboard summary operations
 
 paths:
   /healthz:
@@ -65,7 +57,7 @@ paths:
     post:
       operationId: createScan
       tags: [scans]
-      summary: Scan a website URL for security issues
+      summary: Run an external security audit on a website URL
       requestBody:
         required: true
         content:
@@ -74,7 +66,7 @@ paths:
               $ref: "#/components/schemas/ScanInput"
       responses:
         "201":
-          description: Scan created with findings
+          description: Audit completed
           content:
             application/json:
               schema:
@@ -370,6 +362,15 @@ components:
           type: integer
         lowCount:
           type: integer
+        baselineScanId:
+          type: ["integer", "null"]
+          description: ID of the previous scan for this URL used as baseline for comparison
+        baselineScore:
+          type: ["integer", "null"]
+          description: Security score of the baseline scan
+        scoreDelta:
+          type: ["integer", "null"]
+          description: Difference between current score and baseline (positive = improvement)
         createdAt:
           type: string
         completedAt:
@@ -394,7 +395,7 @@ components:
           minLength: 1
         targetUrl:
           type: string
-          description: The website URL to scan (must be a site you own or have permission to test)
+          description: Website URL to audit (must be a site you own or have permission to test)
         scanType:
           type: string
           enum: [quick, full]

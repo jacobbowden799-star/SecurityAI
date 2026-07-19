@@ -1,8 +1,8 @@
 /**
- * Scan routes — create, list, get, delete website security scans.
+ * Scan routes — External Security Audit: create, list, get, delete website scans.
  */
 import { Router, type IRouter } from "express";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, lt } from "drizzle-orm";
 import { db, scansTable, findingsTable } from "@workspace/db";
 import {
   CreateScanBody,
@@ -17,44 +17,47 @@ import { scanWebsite, calculateSecurityScore } from "../lib/website-scanner";
 
 const router: IRouter = Router();
 
-// ─── GET /scans ───────────────────────────────────────────────────────────────
-router.get("/scans", async (req, res): Promise<void> => {
-  const scans = await db
-    .select()
-    .from(scansTable)
-    .orderBy(desc(scansTable.createdAt))
-    .limit(50);
-
-  res.json(ListScansResponse.parse(scans.map((s) => ({
+function serialiseScan(s: typeof scansTable.$inferSelect) {
+  return {
     ...s,
     createdAt: s.createdAt.toISOString(),
     completedAt: s.completedAt ? s.completedAt.toISOString() : null,
-  }))));
+  };
+}
+
+function serialiseFinding(f: typeof findingsTable.$inferSelect) {
+  return { ...f, createdAt: f.createdAt.toISOString() };
+}
+
+// ─── GET /scans ───────────────────────────────────────────────────────────────
+router.get("/scans", async (_req, res): Promise<void> => {
+  const scans = await db.select().from(scansTable).orderBy(desc(scansTable.createdAt)).limit(50);
+  res.json(ListScansResponse.parse(scans.map(serialiseScan)));
 });
 
 // ─── POST /scans ──────────────────────────────────────────────────────────────
 router.post("/scans", async (req, res): Promise<void> => {
   const parsed = CreateScanBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
-  }
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
   const { name, targetUrl, scanType } = parsed.data;
+  const normUrl = /^https?:\/\//i.test(targetUrl) ? targetUrl : `https://${targetUrl}`;
 
-  // Normalise URL — add https:// if missing
-  const normalisedUrl = /^https?:\/\//i.test(targetUrl)
-    ? targetUrl
-    : `https://${targetUrl}`;
+  // Look up most recent completed scan for same URL (baseline comparison)
+  const [baseline] = await db
+    .select({ id: scansTable.id, securityScore: scansTable.securityScore })
+    .from(scansTable)
+    .where(and(eq(scansTable.targetUrl, normUrl), eq(scansTable.status, "completed")))
+    .orderBy(desc(scansTable.createdAt))
+    .limit(1);
 
-  // Insert with running status
   const [scan] = await db
     .insert(scansTable)
-    .values({ name, targetUrl: normalisedUrl, scanType, status: "running" })
+    .values({ name, targetUrl: normUrl, scanType, status: "running" })
     .returning();
 
   try {
-    const { findings, fetchResult } = await scanWebsite(normalisedUrl, scanType as "quick" | "full");
+    const { findings, fetchResult } = await scanWebsite(normUrl, scanType as "quick" | "full");
 
     if (!fetchResult.ok && findings.length === 0) {
       await db.update(scansTable).set({ status: "failed" }).where(eq(scansTable.id, scan.id));
@@ -62,11 +65,17 @@ router.post("/scans", async (req, res): Promise<void> => {
       return;
     }
 
-    const score = calculateSecurityScore(findings);
+    const actionableFindings = findings.filter((f) => f.severity !== "info");
+    const score = calculateSecurityScore(actionableFindings);
     const criticalCount = findings.filter((f) => f.severity === "critical").length;
     const highCount     = findings.filter((f) => f.severity === "high").length;
     const mediumCount   = findings.filter((f) => f.severity === "medium").length;
     const lowCount      = findings.filter((f) => f.severity === "low").length;
+
+    // Baseline comparison
+    const baselineScanId  = baseline?.id ?? null;
+    const baselineScore   = baseline?.securityScore ?? null;
+    const scoreDelta      = baselineScore !== null ? score - baselineScore : null;
 
     if (findings.length > 0) {
       await db.insert(findingsTable).values(
@@ -86,15 +95,22 @@ router.post("/scans", async (req, res): Promise<void> => {
 
     const [updated] = await db
       .update(scansTable)
-      .set({ status: "completed", securityScore: score, totalFindings: findings.length, criticalCount, highCount, mediumCount, lowCount, completedAt: new Date() })
+      .set({
+        status: "completed",
+        securityScore: score,
+        totalFindings: findings.length,
+        criticalCount, highCount, mediumCount, lowCount,
+        baselineScanId, baselineScore, scoreDelta,
+        completedAt: new Date(),
+      })
       .where(eq(scansTable.id, scan.id))
       .returning();
 
     const persistedFindings = await db.select().from(findingsTable).where(eq(findingsTable.scanId, scan.id));
 
     res.status(201).json(CreateScanResponse.parse({
-      scan: { ...updated, createdAt: updated.createdAt.toISOString(), completedAt: updated.completedAt!.toISOString() },
-      findings: persistedFindings.map((f) => ({ ...f, createdAt: f.createdAt.toISOString() })),
+      scan: serialiseScan(updated),
+      findings: persistedFindings.map(serialiseFinding),
     }));
   } catch (err) {
     await db.update(scansTable).set({ status: "failed" }).where(eq(scansTable.id, scan.id));
@@ -115,8 +131,8 @@ router.get("/scans/:id", async (req, res): Promise<void> => {
   const findings = await db.select().from(findingsTable).where(eq(findingsTable.scanId, parsed.data.id));
 
   res.json(GetScanResponse.parse({
-    scan: { ...scan, createdAt: scan.createdAt.toISOString(), completedAt: scan.completedAt ? scan.completedAt.toISOString() : null },
-    findings: findings.map((f) => ({ ...f, createdAt: f.createdAt.toISOString() })),
+    scan: serialiseScan(scan),
+    findings: findings.map(serialiseFinding),
   }));
 });
 
@@ -141,7 +157,7 @@ router.get("/scans/:id/findings", async (req, res): Promise<void> => {
   if (!scan) { res.status(404).json({ error: "Scan not found" }); return; }
 
   const findings = await db.select().from(findingsTable).where(eq(findingsTable.scanId, id));
-  res.json(GetScanFindingsResponse.parse(findings.map((f) => ({ ...f, createdAt: f.createdAt.toISOString() }))));
+  res.json(GetScanFindingsResponse.parse(findings.map(serialiseFinding)));
 });
 
 export default router;
