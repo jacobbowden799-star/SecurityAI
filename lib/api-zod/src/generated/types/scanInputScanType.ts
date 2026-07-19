@@ -10,7 +10,6 @@ export type ScanInputScanType = typeof ScanInputScanType[keyof typeof ScanInputS
 
 
 export const ScanInputScanType = {
-  code: 'code',
-  dependency: 'dependency',
-  config: 'config',
+  quick: 'quick',
+  full: 'full',
 } as const;

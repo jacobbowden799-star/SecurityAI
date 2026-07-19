@@ -9,9 +9,6 @@
 export interface ChatMessageInput {
   /** @minLength 1 */
   content: string;
-  /**
-     * Optional scan context for the AI to reference
-     * @nullable
-     */
+  /** @nullable */
   scanId?: number | null;
 }

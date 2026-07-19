@@ -1,9 +1,8 @@
 /**
- * Scan routes — create, list, get, delete security scans.
- * Each scan runs the static code scanner and persists findings.
+ * Scan routes — create, list, get, delete website security scans.
  */
 import { Router, type IRouter } from "express";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { db, scansTable, findingsTable } from "@workspace/db";
 import {
   CreateScanBody,
@@ -14,7 +13,7 @@ import {
   GetScanParams,
   DeleteScanParams,
 } from "@workspace/api-zod";
-import { scanCode, calculateSecurityScore } from "../lib/scanner";
+import { scanWebsite, calculateSecurityScore } from "../lib/website-scanner";
 
 const router: IRouter = Router();
 
@@ -26,13 +25,11 @@ router.get("/scans", async (req, res): Promise<void> => {
     .orderBy(desc(scansTable.createdAt))
     .limit(50);
 
-  const response = scans.map((s) => ({
+  res.json(ListScansResponse.parse(scans.map((s) => ({
     ...s,
     createdAt: s.createdAt.toISOString(),
     completedAt: s.completedAt ? s.completedAt.toISOString() : null,
-  }));
-
-  res.json(ListScansResponse.parse(response));
+  }))));
 });
 
 // ─── POST /scans ──────────────────────────────────────────────────────────────
@@ -43,32 +40,34 @@ router.post("/scans", async (req, res): Promise<void> => {
     return;
   }
 
-  const { name, scanType, code, language } = parsed.data;
+  const { name, targetUrl, scanType } = parsed.data;
 
-  // Insert scan with pending status
+  // Normalise URL — add https:// if missing
+  const normalisedUrl = /^https?:\/\//i.test(targetUrl)
+    ? targetUrl
+    : `https://${targetUrl}`;
+
+  // Insert with running status
   const [scan] = await db
     .insert(scansTable)
-    .values({
-      name,
-      scanType,
-      status: "running",
-      language: language ?? null,
-      codeContent: code ?? null,
-    })
+    .values({ name, targetUrl: normalisedUrl, scanType, status: "running" })
     .returning();
 
   try {
-    // Run the security scanner
-    const findings = code ? scanCode(code, scanType as "code" | "dependency" | "config") : [];
-    const securityScore = calculateSecurityScore(findings);
+    const { findings, fetchResult } = await scanWebsite(normalisedUrl, scanType as "quick" | "full");
 
-    // Count by severity
+    if (!fetchResult.ok && findings.length === 0) {
+      await db.update(scansTable).set({ status: "failed" }).where(eq(scansTable.id, scan.id));
+      res.status(400).json({ error: fetchResult.error ?? "Could not reach the URL. Check it is publicly accessible." });
+      return;
+    }
+
+    const score = calculateSecurityScore(findings);
     const criticalCount = findings.filter((f) => f.severity === "critical").length;
-    const highCount = findings.filter((f) => f.severity === "high").length;
-    const mediumCount = findings.filter((f) => f.severity === "medium").length;
-    const lowCount = findings.filter((f) => f.severity === "low").length;
+    const highCount     = findings.filter((f) => f.severity === "high").length;
+    const mediumCount   = findings.filter((f) => f.severity === "medium").length;
+    const lowCount      = findings.filter((f) => f.severity === "low").length;
 
-    // Persist findings
     if (findings.length > 0) {
       await db.insert(findingsTable).values(
         findings.map((f) => ({
@@ -77,7 +76,7 @@ router.post("/scans", async (req, res): Promise<void> => {
           description: f.description,
           severity: f.severity,
           category: f.category,
-          lineNumber: f.lineNumber ?? null,
+          lineNumber: null,
           codeSnippet: f.codeSnippet ?? null,
           recommendation: f.recommendation,
           cweId: f.cweId ?? null,
@@ -85,49 +84,22 @@ router.post("/scans", async (req, res): Promise<void> => {
       );
     }
 
-    // Update scan to completed
-    const [updatedScan] = await db
+    const [updated] = await db
       .update(scansTable)
-      .set({
-        status: "completed",
-        securityScore,
-        totalFindings: findings.length,
-        criticalCount,
-        highCount,
-        mediumCount,
-        lowCount,
-        completedAt: new Date(),
-      })
+      .set({ status: "completed", securityScore: score, totalFindings: findings.length, criticalCount, highCount, mediumCount, lowCount, completedAt: new Date() })
       .where(eq(scansTable.id, scan.id))
       .returning();
 
-    const persistedFindings = await db
-      .select()
-      .from(findingsTable)
-      .where(eq(findingsTable.scanId, scan.id));
+    const persistedFindings = await db.select().from(findingsTable).where(eq(findingsTable.scanId, scan.id));
 
-    const response = {
-      scan: {
-        ...updatedScan,
-        createdAt: updatedScan.createdAt.toISOString(),
-        completedAt: updatedScan.completedAt ? updatedScan.completedAt.toISOString() : null,
-      },
-      findings: persistedFindings.map((f) => ({
-        ...f,
-        createdAt: f.createdAt.toISOString(),
-      })),
-    };
-
-    res.status(201).json(CreateScanResponse.parse(response));
+    res.status(201).json(CreateScanResponse.parse({
+      scan: { ...updated, createdAt: updated.createdAt.toISOString(), completedAt: updated.completedAt!.toISOString() },
+      findings: persistedFindings.map((f) => ({ ...f, createdAt: f.createdAt.toISOString() })),
+    }));
   } catch (err) {
-    // Mark scan as failed
-    await db
-      .update(scansTable)
-      .set({ status: "failed" })
-      .where(eq(scansTable.id, scan.id));
-
+    await db.update(scansTable).set({ status: "failed" }).where(eq(scansTable.id, scan.id));
     req.log.error({ err }, "Scan failed");
-    res.status(500).json({ error: "Scan execution failed" });
+    res.status(500).json({ error: "Scan failed unexpectedly" });
   }
 });
 
@@ -135,61 +107,27 @@ router.post("/scans", async (req, res): Promise<void> => {
 router.get("/scans/:id", async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const parsed = GetScanParams.safeParse({ id: parseInt(raw, 10) });
-  if (!parsed.success) {
-    res.status(400).json({ error: "Invalid scan ID" });
-    return;
-  }
+  if (!parsed.success) { res.status(400).json({ error: "Invalid scan ID" }); return; }
 
-  const scan = await db
-    .select()
-    .from(scansTable)
-    .where(eq(scansTable.id, parsed.data.id))
-    .limit(1);
+  const [scan] = await db.select().from(scansTable).where(eq(scansTable.id, parsed.data.id)).limit(1);
+  if (!scan) { res.status(404).json({ error: "Scan not found" }); return; }
 
-  if (scan.length === 0) {
-    res.status(404).json({ error: "Scan not found" });
-    return;
-  }
+  const findings = await db.select().from(findingsTable).where(eq(findingsTable.scanId, parsed.data.id));
 
-  const findings = await db
-    .select()
-    .from(findingsTable)
-    .where(eq(findingsTable.scanId, parsed.data.id));
-
-  const response = {
-    scan: {
-      ...scan[0],
-      createdAt: scan[0].createdAt.toISOString(),
-      completedAt: scan[0].completedAt ? scan[0].completedAt.toISOString() : null,
-    },
-    findings: findings.map((f) => ({
-      ...f,
-      createdAt: f.createdAt.toISOString(),
-    })),
-  };
-
-  res.json(GetScanResponse.parse(response));
+  res.json(GetScanResponse.parse({
+    scan: { ...scan, createdAt: scan.createdAt.toISOString(), completedAt: scan.completedAt ? scan.completedAt.toISOString() : null },
+    findings: findings.map((f) => ({ ...f, createdAt: f.createdAt.toISOString() })),
+  }));
 });
 
 // ─── DELETE /scans/:id ────────────────────────────────────────────────────────
 router.delete("/scans/:id", async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const parsed = DeleteScanParams.safeParse({ id: parseInt(raw, 10) });
-  if (!parsed.success) {
-    res.status(400).json({ error: "Invalid scan ID" });
-    return;
-  }
+  if (!parsed.success) { res.status(400).json({ error: "Invalid scan ID" }); return; }
 
-  const result = await db
-    .delete(scansTable)
-    .where(eq(scansTable.id, parsed.data.id))
-    .returning({ id: scansTable.id });
-
-  if (result.length === 0) {
-    res.status(404).json({ error: "Scan not found" });
-    return;
-  }
-
+  const result = await db.delete(scansTable).where(eq(scansTable.id, parsed.data.id)).returning({ id: scansTable.id });
+  if (result.length === 0) { res.status(404).json({ error: "Scan not found" }); return; }
   res.status(204).send();
 });
 
@@ -197,34 +135,13 @@ router.delete("/scans/:id", async (req, res): Promise<void> => {
 router.get("/scans/:id/findings", async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
-  if (isNaN(id)) {
-    res.status(400).json({ error: "Invalid scan ID" });
-    return;
-  }
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid scan ID" }); return; }
 
-  // Verify scan exists
-  const scan = await db
-    .select({ id: scansTable.id })
-    .from(scansTable)
-    .where(eq(scansTable.id, id))
-    .limit(1);
+  const [scan] = await db.select({ id: scansTable.id }).from(scansTable).where(eq(scansTable.id, id)).limit(1);
+  if (!scan) { res.status(404).json({ error: "Scan not found" }); return; }
 
-  if (scan.length === 0) {
-    res.status(404).json({ error: "Scan not found" });
-    return;
-  }
-
-  const findings = await db
-    .select()
-    .from(findingsTable)
-    .where(eq(findingsTable.scanId, id));
-
-  const response = findings.map((f) => ({
-    ...f,
-    createdAt: f.createdAt.toISOString(),
-  }));
-
-  res.json(GetScanFindingsResponse.parse(response));
+  const findings = await db.select().from(findingsTable).where(eq(findingsTable.scanId, id));
+  res.json(GetScanFindingsResponse.parse(findings.map((f) => ({ ...f, createdAt: f.createdAt.toISOString() }))));
 });
 
 export default router;

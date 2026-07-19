@@ -13,17 +13,13 @@ export interface Finding {
   title: string;
   description: string;
   severity: FindingSeverity;
-  /** e.g. hardcoded-secret, unsafe-pattern, missing-best-practice, weak-config, outdated-dependency */
   category: string;
   /** @nullable */
   lineNumber?: number | null;
   /** @nullable */
   codeSnippet?: string | null;
   recommendation: string;
-  /**
-     * Common Weakness Enumeration identifier e.g. CWE-798
-     * @nullable
-     */
+  /** @nullable */
   cweId?: string | null;
   createdAt: string;
 }

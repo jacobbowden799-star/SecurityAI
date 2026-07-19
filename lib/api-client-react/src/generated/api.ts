@@ -69,7 +69,6 @@ export const getHealthCheckUrl = () => {
 }
 
 /**
- * Returns server health status
  * @summary Health check
  */
 export const healthCheck = async ( options?: RequestInit): Promise<HealthStatus> => {
@@ -147,7 +146,6 @@ export const getGetDashboardSummaryUrl = () => {
 }
 
 /**
- * Returns aggregated stats for the dashboard including overall security score, scan counts, finding severity breakdown
  * @summary Get dashboard summary
  */
 export const getDashboardSummary = async ( options?: RequestInit): Promise<DashboardSummary> => {
@@ -225,7 +223,6 @@ export const getListScansUrl = () => {
 }
 
 /**
- * Returns paginated scan history ordered by most recent
  * @summary List all scans
  */
 export const listScans = async ( options?: RequestInit): Promise<Scan[]> => {
@@ -303,8 +300,7 @@ export const getCreateScanUrl = () => {
 }
 
 /**
- * Submits code or a target name for security analysis and returns the scan with findings
- * @summary Create and run a new scan
+ * @summary Scan a website URL for security issues
  */
 export const createScan = async (scanInput: ScanInput, options?: RequestInit): Promise<ScanWithFindings> => {
 
@@ -353,7 +349,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type CreateScanMutationError = ErrorType<ErrorResponse>
 
     /**
- * @summary Create and run a new scan
+ * @summary Scan a website URL for security issues
  */
 export const useCreateScan = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createScan>>, TError,{data: BodyType<ScanInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -600,7 +596,7 @@ export const getListReportsUrl = () => {
 }
 
 /**
- * @summary List all generated reports
+ * @summary List all reports
  */
 export const listReports = async ( options?: RequestInit): Promise<Report[]> => {
 
@@ -647,7 +643,7 @@ export type ListReportsQueryError = ErrorType<unknown>
 
 
 /**
- * @summary List all generated reports
+ * @summary List all reports
  */
 
 export function useListReports<TData = Awaited<ReturnType<typeof listReports>>, TError = ErrorType<unknown>>(
@@ -677,7 +673,7 @@ export const getCreateReportUrl = () => {
 }
 
 /**
- * @summary Generate a security report for a scan
+ * @summary Generate a report for a scan
  */
 export const createReport = async (reportInput: ReportInput, options?: RequestInit): Promise<Report> => {
 
@@ -726,7 +722,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type CreateReportMutationError = ErrorType<ErrorResponse>
 
     /**
- * @summary Generate a security report for a scan
+ * @summary Generate a report for a scan
  */
 export const useCreateReport = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createReport>>, TError,{data: BodyType<ReportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -896,7 +892,7 @@ export const getGetChatHistoryUrl = () => {
 }
 
 /**
- * @summary Get chat message history
+ * @summary Get chat history
  */
 export const getChatHistory = async ( options?: RequestInit): Promise<ChatMessage[]> => {
 
@@ -943,7 +939,7 @@ export type GetChatHistoryQueryError = ErrorType<unknown>
 
 
 /**
- * @summary Get chat message history
+ * @summary Get chat history
  */
 
 export function useGetChatHistory<TData = Awaited<ReturnType<typeof getChatHistory>>, TError = ErrorType<unknown>>(
@@ -973,7 +969,7 @@ export const getSendChatMessageUrl = () => {
 }
 
 /**
- * @summary Send a message to the AI security assistant
+ * @summary Send a message to the AI assistant
  */
 export const sendChatMessage = async (chatMessageInput: ChatMessageInput, options?: RequestInit): Promise<ChatMessage> => {
 
@@ -1022,7 +1018,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type SendChatMessageMutationError = ErrorType<ErrorResponse>
 
     /**
- * @summary Send a message to the AI security assistant
+ * @summary Send a message to the AI assistant
  */
 export const useSendChatMessage = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendChatMessage>>, TError,{data: BodyType<ChatMessageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}

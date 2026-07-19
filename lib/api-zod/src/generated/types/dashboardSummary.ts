@@ -9,7 +9,6 @@ import type { CategoryCount } from './categoryCount';
 import type { Scan } from './scan';
 
 export interface DashboardSummary {
-  /** Security score 0-100 */
   overallScore: number;
   totalScans: number;
   scansThisWeek: number;

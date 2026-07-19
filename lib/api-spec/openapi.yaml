@@ -27,7 +27,6 @@ paths:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -36,13 +35,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
 
-  # ─── Dashboard ───────────────────────────────────────────────────────────────
   /dashboard/summary:
     get:
       operationId: getDashboardSummary
       tags: [dashboard]
       summary: Get dashboard summary
-      description: Returns aggregated stats for the dashboard including overall security score, scan counts, finding severity breakdown
       responses:
         "200":
           description: Dashboard summary
@@ -51,13 +48,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/DashboardSummary"
 
-  # ─── Scans ───────────────────────────────────────────────────────────────────
   /scans:
     get:
       operationId: listScans
       tags: [scans]
       summary: List all scans
-      description: Returns paginated scan history ordered by most recent
       responses:
         "200":
           description: List of scans
@@ -70,8 +65,7 @@ paths:
     post:
       operationId: createScan
       tags: [scans]
-      summary: Create and run a new scan
-      description: Submits code or a target name for security analysis and returns the scan with findings
+      summary: Scan a website URL for security issues
       requestBody:
         required: true
         content:
@@ -111,7 +105,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ScanWithFindings"
         "404":
-          description: Scan not found
+          description: Not found
           content:
             application/json:
               schema:
@@ -128,15 +122,14 @@ paths:
             type: integer
       responses:
         "204":
-          description: Deleted successfully
+          description: Deleted
         "404":
-          description: Scan not found
+          description: Not found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  # ─── Findings ─────────────────────────────────────────────────────────────────
   /scans/{id}/findings:
     get:
       operationId: getScanFindings
@@ -158,18 +151,17 @@ paths:
                 items:
                   $ref: "#/components/schemas/Finding"
         "404":
-          description: Scan not found
+          description: Not found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  # ─── Reports ─────────────────────────────────────────────────────────────────
   /reports:
     get:
       operationId: listReports
       tags: [reports]
-      summary: List all generated reports
+      summary: List all reports
       responses:
         "200":
           description: List of reports
@@ -182,7 +174,7 @@ paths:
     post:
       operationId: createReport
       tags: [reports]
-      summary: Generate a security report for a scan
+      summary: Generate a report for a scan
       requestBody:
         required: true
         content:
@@ -216,13 +208,13 @@ paths:
             type: integer
       responses:
         "200":
-          description: Full report with findings summary
+          description: Full report
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Report"
         "404":
-          description: Report not found
+          description: Not found
           content:
             application/json:
               schema:
@@ -239,19 +231,18 @@ paths:
             type: integer
       responses:
         "204":
-          description: Deleted successfully
+          description: Deleted
         "404":
-          description: Report not found
+          description: Not found
 
-  # ─── AI Chat ─────────────────────────────────────────────────────────────────
   /chat/messages:
     get:
       operationId: getChatHistory
       tags: [chat]
-      summary: Get chat message history
+      summary: Get chat history
       responses:
         "200":
-          description: List of chat messages
+          description: List of messages
           content:
             application/json:
               schema:
@@ -261,7 +252,7 @@ paths:
     post:
       operationId: sendChatMessage
       tags: [chat]
-      summary: Send a message to the AI security assistant
+      summary: Send a message to the AI assistant
       requestBody:
         required: true
         content:
@@ -270,7 +261,7 @@ paths:
               $ref: "#/components/schemas/ChatMessageInput"
       responses:
         "201":
-          description: AI response message
+          description: AI response
           content:
             application/json:
               schema:
@@ -298,24 +289,20 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
     ErrorResponse:
       type: object
       properties:
         error:
           type: string
-      required:
-        - error
+      required: [error]
 
-    # ─── Dashboard ──────────────────────────────────────────────────────────────
     DashboardSummary:
       type: object
       properties:
         overallScore:
           type: integer
-          description: Security score 0-100
         totalScans:
           type: integer
         scansThisWeek:
@@ -354,11 +341,8 @@ components:
           type: string
         count:
           type: integer
-      required:
-        - category
-        - count
+      required: [category, count]
 
-    # ─── Scans ──────────────────────────────────────────────────────────────────
     Scan:
       type: object
       properties:
@@ -366,9 +350,11 @@ components:
           type: integer
         name:
           type: string
+        targetUrl:
+          type: ["string", "null"]
         scanType:
           type: string
-          enum: [code, dependency, config]
+          enum: [quick, full]
         status:
           type: string
           enum: [pending, running, completed, failed]
@@ -388,8 +374,6 @@ components:
           type: string
         completedAt:
           type: ["string", "null"]
-        language:
-          type: ["string", "null"]
       required:
         - id
         - name
@@ -408,17 +392,15 @@ components:
         name:
           type: string
           minLength: 1
+        targetUrl:
+          type: string
+          description: The website URL to scan (must be a site you own or have permission to test)
         scanType:
           type: string
-          enum: [code, dependency, config]
-        code:
-          type: string
-          description: Source code to analyze
-        language:
-          type: string
-          description: Programming language of the code (e.g. python, javascript, java)
+          enum: [quick, full]
       required:
         - name
+        - targetUrl
         - scanType
 
     ScanWithFindings:
@@ -430,11 +412,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Finding"
-      required:
-        - scan
-        - findings
+      required: [scan, findings]
 
-    # ─── Findings ───────────────────────────────────────────────────────────────
     Finding:
       type: object
       properties:
@@ -451,7 +430,6 @@ components:
           enum: [critical, high, medium, low, info]
         category:
           type: string
-          description: "e.g. hardcoded-secret, unsafe-pattern, missing-best-practice, weak-config, outdated-dependency"
         lineNumber:
           type: ["integer", "null"]
         codeSnippet:
@@ -460,7 +438,6 @@ components:
           type: string
         cweId:
           type: ["string", "null"]
-          description: Common Weakness Enumeration identifier e.g. CWE-798
         createdAt:
           type: string
       required:
@@ -473,7 +450,6 @@ components:
         - recommendation
         - createdAt
 
-    # ─── Reports ────────────────────────────────────────────────────────────────
     Report:
       type: object
       properties:
@@ -526,11 +502,8 @@ components:
         title:
           type: string
           minLength: 1
-      required:
-        - scanId
-        - title
+      required: [scanId, title]
 
-    # ─── Chat ───────────────────────────────────────────────────────────────────
     ChatMessage:
       type: object
       properties:
@@ -543,11 +516,7 @@ components:
           type: string
         createdAt:
           type: string
-      required:
-        - id
-        - role
-        - content
-        - createdAt
+      required: [id, role, content, createdAt]
 
     ChatMessageInput:
       type: object
@@ -557,6 +526,4 @@ components:
           minLength: 1
         scanId:
           type: ["integer", "null"]
-          description: Optional scan context for the AI to reference
-      required:
-        - content
+      required: [content]

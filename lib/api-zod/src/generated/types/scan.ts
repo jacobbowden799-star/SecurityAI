@@ -11,6 +11,8 @@ import type { ScanStatus } from './scanStatus';
 export interface Scan {
   id: number;
   name: string;
+  /** @nullable */
+  targetUrl?: string | null;
   scanType: ScanScanType;
   status: ScanStatus;
   /** @nullable */
@@ -23,6 +25,4 @@ export interface Scan {
   createdAt: string;
   /** @nullable */
   completedAt?: string | null;
-  /** @nullable */
-  language?: string | null;
 }

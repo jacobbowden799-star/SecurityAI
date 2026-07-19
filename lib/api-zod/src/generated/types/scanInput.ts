@@ -10,9 +10,7 @@ import type { ScanInputScanType } from './scanInputScanType';
 export interface ScanInput {
   /** @minLength 1 */
   name: string;
+  /** The website URL to scan (must be a site you own or have permission to test) */
+  targetUrl: string;
   scanType: ScanInputScanType;
-  /** Source code to analyze */
-  code?: string;
-  /** Programming language of the code (e.g. python, javascript, java) */
-  language?: string;
 }

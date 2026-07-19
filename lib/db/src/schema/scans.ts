@@ -6,16 +6,15 @@ import { z } from "zod/v4";
 export const scansTable = pgTable("scans", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  scanType: text("scan_type").notNull(), // code | dependency | config
-  status: text("status").notNull().default("pending"), // pending | running | completed | failed
+  targetUrl: text("target_url"),           // the website URL that was scanned
+  scanType: text("scan_type").notNull(),   // quick | full
+  status: text("status").notNull().default("pending"),
   securityScore: integer("security_score"),
   totalFindings: integer("total_findings").notNull().default(0),
   criticalCount: integer("critical_count").notNull().default(0),
   highCount: integer("high_count").notNull().default(0),
   mediumCount: integer("medium_count").notNull().default(0),
   lowCount: integer("low_count").notNull().default(0),
-  language: text("language"),
-  codeContent: text("code_content"), // the submitted code
   createdAt: timestamp("created_at").defaultNow().notNull(),
   completedAt: timestamp("completed_at"),
 });
@@ -37,10 +36,10 @@ export const findingsTable = pgTable("findings", {
     .references(() => scansTable.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   description: text("description").notNull(),
-  severity: text("severity").notNull(), // critical | high | medium | low | info
-  category: text("category").notNull(), // hardcoded-secret | unsafe-pattern | missing-best-practice | weak-config | outdated-dependency
+  severity: text("severity").notNull(),
+  category: text("category").notNull(),
   lineNumber: integer("line_number"),
-  codeSnippet: text("code_snippet"),
+  codeSnippet: text("code_snippet"),   // repurposed: holds the raw header value observed
   recommendation: text("recommendation").notNull(),
   cweId: text("cwe_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

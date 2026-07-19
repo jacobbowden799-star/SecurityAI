@@ -17,9 +17,8 @@ export type ScanScanType = typeof ScanScanType[keyof typeof ScanScanType];
 
 
 export const ScanScanType = {
-  code: 'code',
-  dependency: 'dependency',
-  config: 'config',
+  quick: 'quick',
+  full: 'full',
 } as const;
 
 export type ScanStatus = typeof ScanStatus[keyof typeof ScanStatus];
@@ -35,6 +34,8 @@ export const ScanStatus = {
 export interface Scan {
   id: number;
   name: string;
+  /** @nullable */
+  targetUrl?: string | null;
   scanType: ScanScanType;
   status: ScanStatus;
   /** @nullable */
@@ -47,8 +48,6 @@ export interface Scan {
   createdAt: string;
   /** @nullable */
   completedAt?: string | null;
-  /** @nullable */
-  language?: string | null;
 }
 
 export interface CategoryCount {
@@ -57,7 +56,6 @@ export interface CategoryCount {
 }
 
 export interface DashboardSummary {
-  /** Security score 0-100 */
   overallScore: number;
   totalScans: number;
   scansThisWeek: number;
@@ -73,19 +71,16 @@ export type ScanInputScanType = typeof ScanInputScanType[keyof typeof ScanInputS
 
 
 export const ScanInputScanType = {
-  code: 'code',
-  dependency: 'dependency',
-  config: 'config',
+  quick: 'quick',
+  full: 'full',
 } as const;
 
 export interface ScanInput {
   /** @minLength 1 */
   name: string;
+  /** The website URL to scan (must be a site you own or have permission to test) */
+  targetUrl: string;
   scanType: ScanInputScanType;
-  /** Source code to analyze */
-  code?: string;
-  /** Programming language of the code (e.g. python, javascript, java) */
-  language?: string;
 }
 
 export type FindingSeverity = typeof FindingSeverity[keyof typeof FindingSeverity];
@@ -105,17 +100,13 @@ export interface Finding {
   title: string;
   description: string;
   severity: FindingSeverity;
-  /** e.g. hardcoded-secret, unsafe-pattern, missing-best-practice, weak-config, outdated-dependency */
   category: string;
   /** @nullable */
   lineNumber?: number | null;
   /** @nullable */
   codeSnippet?: string | null;
   recommendation: string;
-  /**
-     * Common Weakness Enumeration identifier e.g. CWE-798
-     * @nullable
-     */
+  /** @nullable */
   cweId?: string | null;
   createdAt: string;
 }
@@ -165,10 +156,7 @@ export interface ChatMessage {
 export interface ChatMessageInput {
   /** @minLength 1 */
   content: string;
-  /**
-     * Optional scan context for the AI to reference
-     * @nullable
-     */
+  /** @nullable */
   scanId?: number | null;
 }
 

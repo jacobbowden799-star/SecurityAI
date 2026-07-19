@@ -9,7 +9,6 @@ import * as zod from 'zod';
 
 
 /**
- * Returns server health status
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
@@ -18,11 +17,10 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
- * Returns aggregated stats for the dashboard including overall security score, scan counts, finding severity breakdown
  * @summary Get dashboard summary
  */
 export const GetDashboardSummaryResponse = zod.object({
-  "overallScore": zod.number().describe('Security score 0-100'),
+  "overallScore": zod.number(),
   "totalScans": zod.number(),
   "scansThisWeek": zod.number(),
   "criticalFindings": zod.number(),
@@ -32,7 +30,8 @@ export const GetDashboardSummaryResponse = zod.object({
   "recentScans": zod.array(zod.object({
   "id": zod.number(),
   "name": zod.string(),
-  "scanType": zod.enum(['code', 'dependency', 'config']),
+  "targetUrl": zod.string().nullish(),
+  "scanType": zod.enum(['quick', 'full']),
   "status": zod.enum(['pending', 'running', 'completed', 'failed']),
   "securityScore": zod.number().nullish(),
   "totalFindings": zod.number(),
@@ -41,8 +40,7 @@ export const GetDashboardSummaryResponse = zod.object({
   "mediumCount": zod.number(),
   "lowCount": zod.number(),
   "createdAt": zod.string(),
-  "completedAt": zod.string().nullish(),
-  "language": zod.string().nullish()
+  "completedAt": zod.string().nullish()
 })),
   "findingsByCategory": zod.array(zod.object({
   "category": zod.string(),
@@ -52,13 +50,13 @@ export const GetDashboardSummaryResponse = zod.object({
 
 
 /**
- * Returns paginated scan history ordered by most recent
  * @summary List all scans
  */
 export const ListScansResponseItem = zod.object({
   "id": zod.number(),
   "name": zod.string(),
-  "scanType": zod.enum(['code', 'dependency', 'config']),
+  "targetUrl": zod.string().nullish(),
+  "scanType": zod.enum(['quick', 'full']),
   "status": zod.enum(['pending', 'running', 'completed', 'failed']),
   "securityScore": zod.number().nullish(),
   "totalFindings": zod.number(),
@@ -67,31 +65,29 @@ export const ListScansResponseItem = zod.object({
   "mediumCount": zod.number(),
   "lowCount": zod.number(),
   "createdAt": zod.string(),
-  "completedAt": zod.string().nullish(),
-  "language": zod.string().nullish()
+  "completedAt": zod.string().nullish()
 })
 export const ListScansResponse = zod.array(ListScansResponseItem)
 
 
 /**
- * Submits code or a target name for security analysis and returns the scan with findings
- * @summary Create and run a new scan
+ * @summary Scan a website URL for security issues
  */
 
 
 
 export const CreateScanBody = zod.object({
   "name": zod.string().min(1),
-  "scanType": zod.enum(['code', 'dependency', 'config']),
-  "code": zod.string().optional().describe('Source code to analyze'),
-  "language": zod.string().optional().describe('Programming language of the code (e.g. python, javascript, java)')
+  "targetUrl": zod.string().describe('The website URL to scan (must be a site you own or have permission to test)'),
+  "scanType": zod.enum(['quick', 'full'])
 })
 
 export const CreateScanResponse = zod.object({
   "scan": zod.object({
   "id": zod.number(),
   "name": zod.string(),
-  "scanType": zod.enum(['code', 'dependency', 'config']),
+  "targetUrl": zod.string().nullish(),
+  "scanType": zod.enum(['quick', 'full']),
   "status": zod.enum(['pending', 'running', 'completed', 'failed']),
   "securityScore": zod.number().nullish(),
   "totalFindings": zod.number(),
@@ -100,8 +96,7 @@ export const CreateScanResponse = zod.object({
   "mediumCount": zod.number(),
   "lowCount": zod.number(),
   "createdAt": zod.string(),
-  "completedAt": zod.string().nullish(),
-  "language": zod.string().nullish()
+  "completedAt": zod.string().nullish()
 }),
   "findings": zod.array(zod.object({
   "id": zod.number(),
@@ -109,11 +104,11 @@ export const CreateScanResponse = zod.object({
   "title": zod.string(),
   "description": zod.string(),
   "severity": zod.enum(['critical', 'high', 'medium', 'low', 'info']),
-  "category": zod.string().describe('e.g. hardcoded-secret, unsafe-pattern, missing-best-practice, weak-config, outdated-dependency'),
+  "category": zod.string(),
   "lineNumber": zod.number().nullish(),
   "codeSnippet": zod.string().nullish(),
   "recommendation": zod.string(),
-  "cweId": zod.string().nullish().describe('Common Weakness Enumeration identifier e.g. CWE-798'),
+  "cweId": zod.string().nullish(),
   "createdAt": zod.string()
 }))
 })
@@ -130,7 +125,8 @@ export const GetScanResponse = zod.object({
   "scan": zod.object({
   "id": zod.number(),
   "name": zod.string(),
-  "scanType": zod.enum(['code', 'dependency', 'config']),
+  "targetUrl": zod.string().nullish(),
+  "scanType": zod.enum(['quick', 'full']),
   "status": zod.enum(['pending', 'running', 'completed', 'failed']),
   "securityScore": zod.number().nullish(),
   "totalFindings": zod.number(),
@@ -139,8 +135,7 @@ export const GetScanResponse = zod.object({
   "mediumCount": zod.number(),
   "lowCount": zod.number(),
   "createdAt": zod.string(),
-  "completedAt": zod.string().nullish(),
-  "language": zod.string().nullish()
+  "completedAt": zod.string().nullish()
 }),
   "findings": zod.array(zod.object({
   "id": zod.number(),
@@ -148,11 +143,11 @@ export const GetScanResponse = zod.object({
   "title": zod.string(),
   "description": zod.string(),
   "severity": zod.enum(['critical', 'high', 'medium', 'low', 'info']),
-  "category": zod.string().describe('e.g. hardcoded-secret, unsafe-pattern, missing-best-practice, weak-config, outdated-dependency'),
+  "category": zod.string(),
   "lineNumber": zod.number().nullish(),
   "codeSnippet": zod.string().nullish(),
   "recommendation": zod.string(),
-  "cweId": zod.string().nullish().describe('Common Weakness Enumeration identifier e.g. CWE-798'),
+  "cweId": zod.string().nullish(),
   "createdAt": zod.string()
 }))
 })
@@ -181,18 +176,18 @@ export const GetScanFindingsResponseItem = zod.object({
   "title": zod.string(),
   "description": zod.string(),
   "severity": zod.enum(['critical', 'high', 'medium', 'low', 'info']),
-  "category": zod.string().describe('e.g. hardcoded-secret, unsafe-pattern, missing-best-practice, weak-config, outdated-dependency'),
+  "category": zod.string(),
   "lineNumber": zod.number().nullish(),
   "codeSnippet": zod.string().nullish(),
   "recommendation": zod.string(),
-  "cweId": zod.string().nullish().describe('Common Weakness Enumeration identifier e.g. CWE-798'),
+  "cweId": zod.string().nullish(),
   "createdAt": zod.string()
 })
 export const GetScanFindingsResponse = zod.array(GetScanFindingsResponseItem)
 
 
 /**
- * @summary List all generated reports
+ * @summary List all reports
  */
 export const ListReportsResponseItem = zod.object({
   "id": zod.number(),
@@ -213,7 +208,7 @@ export const ListReportsResponse = zod.array(ListReportsResponseItem)
 
 
 /**
- * @summary Generate a security report for a scan
+ * @summary Generate a report for a scan
  */
 
 
@@ -275,7 +270,7 @@ export const DeleteReportResponse = zod.void()
 
 
 /**
- * @summary Get chat message history
+ * @summary Get chat history
  */
 export const GetChatHistoryResponseItem = zod.object({
   "id": zod.number(),
@@ -287,14 +282,14 @@ export const GetChatHistoryResponse = zod.array(GetChatHistoryResponseItem)
 
 
 /**
- * @summary Send a message to the AI security assistant
+ * @summary Send a message to the AI assistant
  */
 
 
 
 export const SendChatMessageBody = zod.object({
   "content": zod.string().min(1),
-  "scanId": zod.number().nullish().describe('Optional scan context for the AI to reference')
+  "scanId": zod.number().nullish()
 })
 
 export const SendChatMessageResponse = zod.object({

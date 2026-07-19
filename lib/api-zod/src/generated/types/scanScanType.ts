@@ -10,7 +10,6 @@ export type ScanScanType = typeof ScanScanType[keyof typeof ScanScanType];
 
 
 export const ScanScanType = {
-  code: 'code',
-  dependency: 'dependency',
-  config: 'config',
+  quick: 'quick',
+  full: 'full',
 } as const;
