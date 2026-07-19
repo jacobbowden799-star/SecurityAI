@@ -3,13 +3,24 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: SecurityAI - Defensive cybersecurity analysis platform API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: scans
+    description: Security scan operations
+  - name: findings
+    description: Security finding operations
+  - name: reports
+    description: Security report operations
+  - name: chat
+    description: AI assistant chat operations
+  - name: dashboard
+    description: Dashboard summary operations
+
 paths:
   /healthz:
     get:
@@ -24,6 +35,262 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ─── Dashboard ───────────────────────────────────────────────────────────────
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get dashboard summary
+      description: Returns aggregated stats for the dashboard including overall security score, scan counts, finding severity breakdown
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  # ─── Scans ───────────────────────────────────────────────────────────────────
+  /scans:
+    get:
+      operationId: listScans
+      tags: [scans]
+      summary: List all scans
+      description: Returns paginated scan history ordered by most recent
+      responses:
+        "200":
+          description: List of scans
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Scan"
+    post:
+      operationId: createScan
+      tags: [scans]
+      summary: Create and run a new scan
+      description: Submits code or a target name for security analysis and returns the scan with findings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScanInput"
+      responses:
+        "201":
+          description: Scan created with findings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanWithFindings"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /scans/{id}:
+    get:
+      operationId: getScan
+      tags: [scans]
+      summary: Get a scan by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Scan detail with findings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanWithFindings"
+        "404":
+          description: Scan not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteScan
+      tags: [scans]
+      summary: Delete a scan
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted successfully
+        "404":
+          description: Scan not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ─── Findings ─────────────────────────────────────────────────────────────────
+  /scans/{id}/findings:
+    get:
+      operationId: getScanFindings
+      tags: [findings]
+      summary: List findings for a scan
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of security findings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Finding"
+        "404":
+          description: Scan not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ─── Reports ─────────────────────────────────────────────────────────────────
+  /reports:
+    get:
+      operationId: listReports
+      tags: [reports]
+      summary: List all generated reports
+      responses:
+        "200":
+          description: List of reports
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Report"
+    post:
+      operationId: createReport
+      tags: [reports]
+      summary: Generate a security report for a scan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportInput"
+      responses:
+        "201":
+          description: Report created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Report"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /reports/{id}:
+    get:
+      operationId: getReport
+      tags: [reports]
+      summary: Get a report by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Full report with findings summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Report"
+        "404":
+          description: Report not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteReport
+      tags: [reports]
+      summary: Delete a report
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted successfully
+        "404":
+          description: Report not found
+
+  # ─── AI Chat ─────────────────────────────────────────────────────────────────
+  /chat/messages:
+    get:
+      operationId: getChatHistory
+      tags: [chat]
+      summary: Get chat message history
+      responses:
+        "200":
+          description: List of chat messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChatMessage"
+    post:
+      operationId: sendChatMessage
+      tags: [chat]
+      summary: Send a message to the AI security assistant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatMessageInput"
+      responses:
+        "201":
+          description: AI response message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatMessage"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /chat/messages/clear:
+    delete:
+      operationId: clearChatHistory
+      tags: [chat]
+      summary: Clear all chat messages
+      responses:
+        "204":
+          description: Cleared
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +301,262 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    # ─── Dashboard ──────────────────────────────────────────────────────────────
+    DashboardSummary:
+      type: object
+      properties:
+        overallScore:
+          type: integer
+          description: Security score 0-100
+        totalScans:
+          type: integer
+        scansThisWeek:
+          type: integer
+        criticalFindings:
+          type: integer
+        highFindings:
+          type: integer
+        mediumFindings:
+          type: integer
+        lowFindings:
+          type: integer
+        recentScans:
+          type: array
+          items:
+            $ref: "#/components/schemas/Scan"
+        findingsByCategory:
+          type: array
+          items:
+            $ref: "#/components/schemas/CategoryCount"
+      required:
+        - overallScore
+        - totalScans
+        - scansThisWeek
+        - criticalFindings
+        - highFindings
+        - mediumFindings
+        - lowFindings
+        - recentScans
+        - findingsByCategory
+
+    CategoryCount:
+      type: object
+      properties:
+        category:
+          type: string
+        count:
+          type: integer
+      required:
+        - category
+        - count
+
+    # ─── Scans ──────────────────────────────────────────────────────────────────
+    Scan:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        scanType:
+          type: string
+          enum: [code, dependency, config]
+        status:
+          type: string
+          enum: [pending, running, completed, failed]
+        securityScore:
+          type: ["integer", "null"]
+        totalFindings:
+          type: integer
+        criticalCount:
+          type: integer
+        highCount:
+          type: integer
+        mediumCount:
+          type: integer
+        lowCount:
+          type: integer
+        createdAt:
+          type: string
+        completedAt:
+          type: ["string", "null"]
+        language:
+          type: ["string", "null"]
+      required:
+        - id
+        - name
+        - scanType
+        - status
+        - totalFindings
+        - criticalCount
+        - highCount
+        - mediumCount
+        - lowCount
+        - createdAt
+
+    ScanInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        scanType:
+          type: string
+          enum: [code, dependency, config]
+        code:
+          type: string
+          description: Source code to analyze
+        language:
+          type: string
+          description: Programming language of the code (e.g. python, javascript, java)
+      required:
+        - name
+        - scanType
+
+    ScanWithFindings:
+      type: object
+      properties:
+        scan:
+          $ref: "#/components/schemas/Scan"
+        findings:
+          type: array
+          items:
+            $ref: "#/components/schemas/Finding"
+      required:
+        - scan
+        - findings
+
+    # ─── Findings ───────────────────────────────────────────────────────────────
+    Finding:
+      type: object
+      properties:
+        id:
+          type: integer
+        scanId:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        severity:
+          type: string
+          enum: [critical, high, medium, low, info]
+        category:
+          type: string
+          description: "e.g. hardcoded-secret, unsafe-pattern, missing-best-practice, weak-config, outdated-dependency"
+        lineNumber:
+          type: ["integer", "null"]
+        codeSnippet:
+          type: ["string", "null"]
+        recommendation:
+          type: string
+        cweId:
+          type: ["string", "null"]
+          description: Common Weakness Enumeration identifier e.g. CWE-798
+        createdAt:
+          type: string
+      required:
+        - id
+        - scanId
+        - title
+        - description
+        - severity
+        - category
+        - recommendation
+        - createdAt
+
+    # ─── Reports ────────────────────────────────────────────────────────────────
+    Report:
+      type: object
+      properties:
+        id:
+          type: integer
+        scanId:
+          type: integer
+        scanName:
+          type: string
+        title:
+          type: string
+        summary:
+          type: string
+        securityScore:
+          type: integer
+        criticalCount:
+          type: integer
+        highCount:
+          type: integer
+        mediumCount:
+          type: integer
+        lowCount:
+          type: integer
+        totalFindings:
+          type: integer
+        recommendations:
+          type: string
+        createdAt:
+          type: string
+      required:
+        - id
+        - scanId
+        - scanName
+        - title
+        - summary
+        - securityScore
+        - criticalCount
+        - highCount
+        - mediumCount
+        - lowCount
+        - totalFindings
+        - recommendations
+        - createdAt
+
+    ReportInput:
+      type: object
+      properties:
+        scanId:
+          type: integer
+        title:
+          type: string
+          minLength: 1
+      required:
+        - scanId
+        - title
+
+    # ─── Chat ───────────────────────────────────────────────────────────────────
+    ChatMessage:
+      type: object
+      properties:
+        id:
+          type: integer
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+        createdAt:
+          type: string
+      required:
+        - id
+        - role
+        - content
+        - createdAt
+
+    ChatMessageInput:
+      type: object
+      properties:
+        content:
+          type: string
+          minLength: 1
+        scanId:
+          type: ["integer", "null"]
+          description: Optional scan context for the AI to reference
+      required:
+        - content
