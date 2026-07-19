@@ -46,15 +46,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        <div className="p-4 m-4 rounded-md bg-secondary/50 border border-border">
-          <div className="flex items-center gap-2 text-yellow-500/80 mb-1">
-            <AlertTriangle className="w-4 h-4" />
-            <span className="text-xs font-mono font-bold">RESTRICTED</span>
-          </div>
-          <p className="text-[10px] text-muted-foreground leading-relaxed">
-            Defensive tool only. Unauthorized scanning of external targets is prohibited and logged.
-          </p>
-        </div>
+
       </aside>
 
       {/* Main Content */}
