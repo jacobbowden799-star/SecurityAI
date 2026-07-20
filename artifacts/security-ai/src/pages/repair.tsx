@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Play, ShieldCheck, AlertTriangle, CheckCircle2, Clock, RotateCcw,
-  FileCode2, Cpu, Wrench, FlaskConical, TrendingUp, Zap, ChevronRight,
-  Terminal, GitCompare, History, BarChart3, X,
+  Cpu, Wrench, FlaskConical, TrendingUp, Zap, ChevronRight,
+  Terminal, GitCompare, History, BarChart3, X, TrendingDown, Minus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -21,6 +21,8 @@ interface Issue {
   scoreGain: number;
 }
 
+// All code strings are plain joined arrays — no nested template literals that
+// could trip up esbuild's escape-sequence handling.
 const ISSUES: Issue[] = [
   {
     id: 1,
@@ -29,31 +31,35 @@ const ISSUES: Issue[] = [
     file: "src/config/database.js",
     line: 7,
     description: "Plaintext credentials embedded directly in source code.",
-    beforeCode: `const mysql = require('mysql2');
-
-// Database configuration
-const connection = mysql.createConnection({
-  host:     'prod-db.internal.company.com',
-  user:     'app_admin',
-  password: 'Sup3rS3cr3t!2024',
-  database: 'customers_prod',
-});
-
-module.exports = connection;`,
-    afterCode: `const mysql = require('mysql2');
-require('dotenv').config();
-
-// Database configuration — credentials from environment
-const connection = mysql.createConnection({
-  host:     process.env.DB_HOST,
-  user:     process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-});
-
-module.exports = connection;`,
+    beforeCode: [
+      "const mysql = require('mysql2');",
+      "",
+      "// Database configuration",
+      "const connection = mysql.createConnection({",
+      "  host:     'prod-db.internal.company.com',",
+      "  user:     'app_admin',",
+      "  password: 'Sup3rS3cr3t!2024',",
+      "  database: 'customers_prod',",
+      "});",
+      "",
+      "module.exports = connection;",
+    ].join("\n"),
+    afterCode: [
+      "const mysql = require('mysql2');",
+      "require('dotenv').config();",
+      "",
+      "// Database configuration — credentials from environment",
+      "const connection = mysql.createConnection({",
+      "  host:     process.env.DB_HOST,",
+      "  user:     process.env.DB_USER,",
+      "  password: process.env.DB_PASSWORD,",
+      "  database: process.env.DB_NAME,",
+      "});",
+      "",
+      "module.exports = connection;",
+    ].join("\n"),
     explanation:
-      "Hardcoded credentials in source code are exposed to anyone with repository access (current or historical). The AI replaced all literal values with `process.env.*` references. A `.env.example` template and updated `.gitignore` were also generated. The original credentials must be rotated immediately.",
+      "Hardcoded credentials in source code are exposed to anyone with repository access (current or historical). The AI replaced all literal values with process.env.* references. A .env.example template and updated .gitignore were also generated. The original credentials must be rotated immediately.",
     scoreGain: 18,
   },
   {
@@ -63,72 +69,80 @@ module.exports = connection;`,
     file: "src/api/users.js",
     line: 23,
     description: "User-supplied input concatenated directly into SQL query string.",
-    beforeCode: `app.get('/users/search', async (req, res) => {
-  const { term } = req.query;
-
-  // ⚠ VULNERABLE: direct string interpolation
-  const query = \`SELECT id, name, email
-    FROM users
-    WHERE name LIKE '%\${term}%'
-       OR email = '\${term}'\`;
-
-  const [rows] = await db.execute(query);
-  res.json(rows);
-});`,
-    afterCode: `app.get('/users/search', [
-  query('term').isString().trim().isLength({ max: 100 }).escape(),
-], async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-
-  const { term } = req.query;
-
-  // ✓ SAFE: parameterised query — no injection possible
-  const [rows] = await db.execute(
-    'SELECT id, name, email FROM users WHERE name LIKE ? OR email = ?',
-    [\`%\${term}%\`, term]
-  );
-  res.json(rows);
-});`,
+    beforeCode: [
+      "app.get('/users/search', async (req, res) => {",
+      "  const { term } = req.query;",
+      "",
+      "  // WARNING: direct string interpolation",
+      "  const query = 'SELECT id, name, email FROM users'",
+      "    + ' WHERE name LIKE \"%' + term + '%\"'",
+      "    + ' OR email = \"' + term + '\"';",
+      "",
+      "  const [rows] = await db.execute(query);",
+      "  res.json(rows);",
+      "});",
+    ].join("\n"),
+    afterCode: [
+      "app.get('/users/search', [",
+      "  query('term').isString().trim().isLength({ max: 100 }).escape(),",
+      "], async (req, res) => {",
+      "  const errors = validationResult(req);",
+      "  if (!errors.isEmpty())",
+      "    return res.status(400).json({ errors: errors.array() });",
+      "",
+      "  const { term } = req.query;",
+      "",
+      "  // SAFE: parameterised query — no injection possible",
+      "  const [rows] = await db.execute(",
+      "    'SELECT id, name, email FROM users WHERE name LIKE ? OR email = ?',",
+      "    ['%' + term + '%', term]",
+      "  );",
+      "  res.json(rows);",
+      "});",
+    ].join("\n"),
     explanation:
-      "The vulnerable query built a SQL string using template literals with raw user input — a classic SQL injection. A single quote in `term` could break the query and allow arbitrary SQL execution. The fix uses a parameterised query with `?` placeholders; the database driver handles escaping. Input validation with `express-validator` was also added to reject excessively long or malformed input before it reaches the database.",
+      "The vulnerable query built a SQL string by concatenating raw user input — a classic SQL injection. A single quote in term could break the query and allow arbitrary SQL execution. The fix uses a parameterised query with ? placeholders; the database driver handles escaping. Input validation with express-validator was also added to reject excessively long or malformed input before it reaches the database.",
     scoreGain: 22,
   },
   {
     id: 3,
-    title: "Missing Authentication on Admin Route",
+    title: "Missing Authentication on Admin Routes",
     severity: "critical",
     file: "src/routes/admin.js",
     line: 12,
-    description: "Sensitive admin endpoint accessible without authentication.",
-    beforeCode: `const express = require('express');
-const router = express.Router();
-const { getAllUsers, deleteUser } = require('../controllers/users');
-
-// Admin dashboard routes
-router.get('/admin/users',        getAllUsers);
-router.delete('/admin/users/:id', deleteUser);
-router.get('/admin/logs',         getSystemLogs);
-router.post('/admin/config',      updateConfig);
-
-module.exports = router;`,
-    afterCode: `const express = require('express');
-const router  = express.Router();
-const { verifyToken, requireRole } = require('../middleware/auth');
-const { getAllUsers, deleteUser }   = require('../controllers/users');
-
-// All admin routes require authentication + admin role
-router.use(verifyToken);
-router.use(requireRole('admin'));
-
-router.get('/admin/users',        getAllUsers);
-router.delete('/admin/users/:id', deleteUser);
-router.get('/admin/logs',         getSystemLogs);
-router.post('/admin/config',      updateConfig);
-
-module.exports = router;`,
+    description: "Sensitive admin endpoints accessible without authentication.",
+    beforeCode: [
+      "const express = require('express');",
+      "const router = express.Router();",
+      "const { getAllUsers, deleteUser } = require('../controllers/users');",
+      "",
+      "// Admin dashboard routes",
+      "router.get('/admin/users',        getAllUsers);",
+      "router.delete('/admin/users/:id', deleteUser);",
+      "router.get('/admin/logs',         getSystemLogs);",
+      "router.post('/admin/config',      updateConfig);",
+      "",
+      "module.exports = router;",
+    ].join("\n"),
+    afterCode: [
+      "const express = require('express');",
+      "const router  = express.Router();",
+      "const { verifyToken, requireRole } = require('../middleware/auth');",
+      "const { getAllUsers, deleteUser }   = require('../controllers/users');",
+      "",
+      "// All admin routes require auth + admin role",
+      "router.use(verifyToken);",
+      "router.use(requireRole('admin'));",
+      "",
+      "router.get('/admin/users',        getAllUsers);",
+      "router.delete('/admin/users/:id', deleteUser);",
+      "router.get('/admin/logs',         getSystemLogs);",
+      "router.post('/admin/config',      updateConfig);",
+      "",
+      "module.exports = router;",
+    ].join("\n"),
     explanation:
-      "All four admin endpoints were fully unauthenticated — any user (or attacker) could enumerate users, delete accounts, read system logs, and change configuration without any credentials. The fix uses `router.use()` to apply `verifyToken` and `requireRole('admin')` middleware to every route in the file, ensuring the check cannot be accidentally skipped on a new route added later.",
+      "All four admin endpoints were fully unauthenticated — any user or attacker could enumerate users, delete accounts, read system logs, and change configuration. The fix uses router.use() to apply verifyToken and requireRole('admin') middleware to every route in the file, ensuring the check cannot be accidentally skipped when a new route is added later.",
     scoreGain: 20,
   },
   {
@@ -138,35 +152,39 @@ module.exports = router;`,
     file: "src/middleware/errorHandler.js",
     line: 8,
     description: "Full exception stack trace returned to client in JSON response.",
-    beforeCode: `// Global error handling middleware
-function errorHandler(err, req, res, next) {
-  console.error(err);
-
-  res.status(err.status || 500).json({
-    error:   err.message,
-    stack:   err.stack,
-    details: err,
-  });
-}
-
-module.exports = errorHandler;`,
-    afterCode: `const logger = require('../lib/logger');
-
-// Global error handling middleware
-function errorHandler(err, req, res, next) {
-  // Log full detail server-side only
-  logger.error({ err, url: req.url, method: req.method }, 'Unhandled error');
-
-  // Never expose internals to the client
-  const isProduction = process.env.NODE_ENV === 'production';
-  res.status(err.status || 500).json({
-    error: isProduction ? 'An unexpected error occurred' : err.message,
-  });
-}
-
-module.exports = errorHandler;`,
+    beforeCode: [
+      "// Global error handling middleware",
+      "function errorHandler(err, req, res, next) {",
+      "  console.error(err);",
+      "",
+      "  res.status(err.status || 500).json({",
+      "    error:   err.message,",
+      "    stack:   err.stack,",
+      "    details: err,",
+      "  });",
+      "}",
+      "",
+      "module.exports = errorHandler;",
+    ].join("\n"),
+    afterCode: [
+      "const logger = require('../lib/logger');",
+      "",
+      "// Global error handling middleware",
+      "function errorHandler(err, req, res, next) {",
+      "  // Log full detail server-side only",
+      "  logger.error({ err, url: req.url, method: req.method }, 'Unhandled error');",
+      "",
+      "  // Never expose internals to the client",
+      "  const isProd = process.env.NODE_ENV === 'production';",
+      "  res.status(err.status || 500).json({",
+      "    error: isProd ? 'An unexpected error occurred' : err.message,",
+      "  });",
+      "}",
+      "",
+      "module.exports = errorHandler;",
+    ].join("\n"),
     explanation:
-      "Returning `err.stack` and `err` in the API response leaks internal file paths, line numbers, framework versions, and logic details. Attackers use this to map your codebase and find exploitable paths. The fix logs full error detail server-side using a structured logger, while returning only a generic message to clients in production. In development the message is still shown for debugging convenience.",
+      "Returning err.stack and err in the API response leaks internal file paths, line numbers, framework versions, and logic details. Attackers use this to map your codebase and find exploitable paths. The fix logs full error detail server-side using a structured logger, while returning only a generic message to clients in production. In development the message is still shown for debugging convenience.",
     scoreGain: 12,
   },
   {
@@ -176,42 +194,46 @@ module.exports = errorHandler;`,
     file: "src/routes/auth.js",
     line: 4,
     description: "Login route allows unlimited requests, enabling brute-force attacks.",
-    beforeCode: `const express = require('express');
-const router = express.Router();
-const { login, logout } = require('../controllers/auth');
-
-// Auth routes — no rate limiting!
-router.post('/auth/login',  login);
-router.post('/auth/logout', logout);
-router.post('/auth/reset',  requestPasswordReset);
-
-module.exports = router;`,
-    afterCode: `const express   = require('express');
-const router    = express.Router();
-const rateLimit = require('express-rate-limit');
-const { login, logout } = require('../controllers/auth');
-
-// 10 attempts per 15 minutes per IP — blocks brute force
-const loginLimiter = rateLimit({
-  windowMs:       15 * 60 * 1000,
-  max:            10,
-  message:        { error: 'Too many login attempts. Try again in 15 minutes.' },
-  standardHeaders: true,
-  legacyHeaders:  false,
-});
-
-router.post('/auth/login',  loginLimiter, login);
-router.post('/auth/logout', logout);
-router.post('/auth/reset',  loginLimiter, requestPasswordReset);
-
-module.exports = router;`,
+    beforeCode: [
+      "const express = require('express');",
+      "const router = express.Router();",
+      "const { login, logout } = require('../controllers/auth');",
+      "",
+      "// Auth routes — no rate limiting!",
+      "router.post('/auth/login',  login);",
+      "router.post('/auth/logout', logout);",
+      "router.post('/auth/reset',  requestPasswordReset);",
+      "",
+      "module.exports = router;",
+    ].join("\n"),
+    afterCode: [
+      "const express   = require('express');",
+      "const router    = express.Router();",
+      "const rateLimit = require('express-rate-limit');",
+      "const { login, logout } = require('../controllers/auth');",
+      "",
+      "// 10 attempts per 15 min per IP — blocks brute force",
+      "const loginLimiter = rateLimit({",
+      "  windowMs:        15 * 60 * 1000,",
+      "  max:             10,",
+      "  message:         { error: 'Too many attempts. Try again in 15 minutes.' },",
+      "  standardHeaders: true,",
+      "  legacyHeaders:   false,",
+      "});",
+      "",
+      "router.post('/auth/login',  loginLimiter, login);",
+      "router.post('/auth/logout', logout);",
+      "router.post('/auth/reset',  loginLimiter, requestPasswordReset);",
+      "",
+      "module.exports = router;",
+    ].join("\n"),
     explanation:
-      "Without rate limiting, an attacker can automate thousands of password guesses per second. A standard password list attack can crack a weak 8-character password in minutes. The fix adds `express-rate-limit` allowing only 10 attempts per IP per 15-minute window. This is applied to both `/auth/login` and `/auth/reset` (which can also be abused for account enumeration via timing attacks).",
+      "Without rate limiting, an attacker can automate thousands of password guesses per second. A standard password list attack can crack a weak 8-character password in minutes. The fix adds express-rate-limit allowing only 10 attempts per IP per 15-minute window, applied to both /auth/login and /auth/reset (which can also be abused for account enumeration via timing attacks).",
     scoreGain: 10,
   },
 ];
 
-const SCAN_LINES = [
+const SCAN_LINES: string[] = [
   "[00:00.1] Initializing Autonomous Code Repair Engine v2.4.1...",
   "[00:00.3] Loading static analysis rules (CVE-2024 database)...",
   "[00:00.5] Parsing project structure — 847 source files detected",
@@ -230,7 +252,7 @@ const SCAN_LINES = [
   "[00:03.1] Scan complete. 5 security issues require remediation.",
 ];
 
-const VERIFY_CHECKS = [
+const VERIFY_CHECKS: string[] = [
   "Running SAST analysis on patched files...",
   "Executing unit test suite (147 tests)...",
   "Checking no regressions in API contracts...",
@@ -241,7 +263,7 @@ const VERIFY_CHECKS = [
   "All checks passed. Repairs verified.",
 ];
 
-const APPLY_STEPS = [
+const APPLY_STEPS: string[] = [
   "Creating encrypted backup...",
   "Applying AI-generated patch...",
   "Updating project files...",
@@ -275,7 +297,9 @@ function SeverityPill({ s }: { s: "critical" | "high" | "medium" }) {
 function CodeBlock({
   code, label, variant,
 }: { code: string; label: string; variant: "before" | "after" }) {
-  const lines = code.split("\n");
+  // Defensive: ensure code is always a string
+  const safeCode = typeof code === "string" ? code : "";
+  const lines = safeCode.split("\n");
   return (
     <div className={cn(
       "rounded-lg border overflow-hidden flex-1 min-w-0",
@@ -292,16 +316,11 @@ function CodeBlock({
       </div>
       <pre className="p-4 text-xs font-mono overflow-x-auto bg-black/40 text-slate-300 leading-relaxed">
         {lines.map((line, i) => {
-          const isRemoved = variant === "before" && line.includes("⚠");
+          const safeL = line ?? "";
+          const isWarning = variant === "before" && safeL.includes("WARNING");
           return (
-            <div
-              key={i}
-              className={cn(
-                "px-1 rounded",
-                isRemoved && "bg-red-500/10 text-red-300"
-              )}
-            >
-              {line || "\u00A0"}
+            <div key={i} className={cn("px-1 rounded", isWarning && "bg-red-500/10 text-red-300")}>
+              {safeL || "\u00A0"}
             </div>
           );
         })}
@@ -311,12 +330,11 @@ function CodeBlock({
 }
 
 function StepRow({
-  icon: Icon, label, status, active,
+  icon: Icon, label, status,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   status: "pending" | "active" | "done";
-  active?: boolean;
 }) {
   return (
     <div className={cn(
@@ -346,32 +364,34 @@ function StepRow({
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function RepairEngine() {
-  const [phase, setPhase]                 = useState<Phase>("idle");
-  const [scanLines, setScanLines]         = useState<string[]>([]);
-  const [scanProgress, setScanProgress]   = useState(0);
-  const [currentIdx, setCurrentIdx]       = useState(0);
-  const [issueStep, setIssueStep]         = useState<IssueStep>("analyzing");
-  const [applyStep, setApplyStep]         = useState(0);
-  const [verifyLines, setVerifyLines]     = useState<string[]>([]);
+  const [phase, setPhase]                   = useState<Phase>("idle");
+  const [scanLines, setScanLines]           = useState<string[]>([]);
+  const [scanProgress, setScanProgress]     = useState(0);
+  const [currentIdx, setCurrentIdx]         = useState(0);
+  const [issueStep, setIssueStep]           = useState<IssueStep>("analyzing");
+  const [applyStep, setApplyStep]           = useState(0);
+  const [verifyLines, setVerifyLines]       = useState<string[]>([]);
   const [verifyProgress, setVerifyProgress] = useState(0);
-  const [completed, setCompleted]         = useState<CompletedRepair[]>([]);
-  const [totalScore, setTotalScore]       = useState(0);
-  const [elapsed, setElapsed]             = useState(0);
-  const [undoneIdx, setUndoneIdx]         = useState<number | null>(null);
-  const [showUndo, setShowUndo]           = useState(false);
+  const [completed, setCompleted]           = useState<CompletedRepair[]>([]);
+  const [totalScore, setTotalScore]         = useState(0);
+  const [elapsed, setElapsed]               = useState(0);
+  const [showUndo, setShowUndo]             = useState(false);
 
-  const terminalRef   = useRef<HTMLDivElement>(null);
-  const timerRef      = useRef<ReturnType<typeof setInterval> | null>(null);
-  const startTimeRef  = useRef<number>(0);
+  const terminalRef  = useRef<HTMLDivElement>(null);
+  const timerRef     = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startTimeRef = useRef<number>(0);
 
-  // ── Scroll terminal to bottom ──────────────────────────────────────────────
+  // Use a ref so repairIssue can call runVerification without stale closure
+  const runVerificationRef = useRef<(() => void) | null>(null);
+
+  // ── Scroll terminal to bottom ────────────────────────────────────────────
   useEffect(() => {
     if (terminalRef.current) {
       terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
     }
   }, [scanLines, verifyLines]);
 
-  // ── Elapsed timer ──────────────────────────────────────────────────────────
+  // ── Elapsed timer ────────────────────────────────────────────────────────
   useEffect(() => {
     if (phase !== "idle" && phase !== "complete") {
       timerRef.current = setInterval(() => {
@@ -383,7 +403,31 @@ export default function RepairEngine() {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [phase]);
 
-  // ── Kick off a single issue's repair sequence ──────────────────────────────
+  // ── Verification phase ───────────────────────────────────────────────────
+  const runVerification = useCallback(() => {
+    setVerifyLines([]);
+    setVerifyProgress(0);
+    let i = 0;
+    const step = () => {
+      if (i >= VERIFY_CHECKS.length) {
+        setVerifyProgress(100);
+        setTimeout(() => setPhase("complete"), 800);
+        return;
+      }
+      setVerifyLines((p) => [...p, VERIFY_CHECKS[i]]);
+      setVerifyProgress(Math.round(((i + 1) / VERIFY_CHECKS.length) * 100));
+      i++;
+      setTimeout(step, 600);
+    };
+    setTimeout(step, 400);
+  }, []);
+
+  // Keep ref in sync so repairIssue always calls the latest version
+  useEffect(() => {
+    runVerificationRef.current = runVerification;
+  }, [runVerification]);
+
+  // ── Issue repair sequence (uses ref to avoid stale closure) ─────────────
   const repairIssue = useCallback((idx: number) => {
     setCurrentIdx(idx);
     setIssueStep("analyzing");
@@ -401,12 +445,11 @@ export default function RepairEngine() {
       await t(2500);
       setIssueStep("applying");
 
-      // Step through apply sub-steps
       for (let s = 0; s < APPLY_STEPS.length; s++) {
         setApplyStep(s);
         await t(700);
       }
-      setApplyStep(APPLY_STEPS.length); // all done
+      setApplyStep(APPLY_STEPS.length);
 
       await t(500);
       setIssueStep("done");
@@ -419,37 +462,16 @@ export default function RepairEngine() {
 
       await t(600);
 
-      // Advance
       if (idx + 1 < ISSUES.length) {
         repairIssue(idx + 1);
       } else {
-        // Start verification
         setPhase("verifying");
-        setVerifyLines([]);
-        setVerifyProgress(0);
-        runVerification();
+        runVerificationRef.current?.();
       }
     })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Verification phase ─────────────────────────────────────────────────────
-  const runVerification = useCallback(() => {
-    let i = 0;
-    const step = () => {
-      if (i >= VERIFY_CHECKS.length) {
-        setVerifyProgress(100);
-        setTimeout(() => setPhase("complete"), 800);
-        return;
-      }
-      setVerifyLines((p) => [...p, VERIFY_CHECKS[i]]);
-      setVerifyProgress(Math.round(((i + 1) / VERIFY_CHECKS.length) * 100));
-      i++;
-      setTimeout(step, 600);
-    };
-    setTimeout(step, 400);
-  }, []);
-
-  // ── Start the full sequence ────────────────────────────────────────────────
+  // ── Start the full sequence ──────────────────────────────────────────────
   const startRepair = useCallback(() => {
     setPhase("scanning");
     setScanLines([]);
@@ -457,7 +479,6 @@ export default function RepairEngine() {
     setCompleted([]);
     setTotalScore(0);
     setElapsed(0);
-    setUndoneIdx(null);
     startTimeRef.current = Date.now();
 
     let i = 0;
@@ -478,28 +499,30 @@ export default function RepairEngine() {
     setTimeout(addLine, 300);
   }, [repairIssue]);
 
-  // ── Undo last repair ──────────────────────────────────────────────────────
+  // ── Undo last repair ─────────────────────────────────────────────────────
   const handleUndo = useCallback(() => {
-    if (completed.length === 0 || phase !== "complete") return;
-    const lastIdx = completed.length - 1;
-    const lastRepair = completed[lastIdx];
-    setCompleted((p) => p.map((r, i) => i === lastIdx ? { ...r, undone: true } : r));
-    setTotalScore((s) => s - lastRepair.issue.scoreGain);
-    setUndoneIdx(lastIdx);
+    if (phase !== "complete") return;
+    setCompleted((prev) => {
+      const lastActive = [...prev].reverse().find((r) => !r.undone);
+      if (!lastActive) return prev;
+      setTotalScore((s) => s - lastActive.issue.scoreGain);
+      return prev.map((r) => r === lastActive ? { ...r, undone: true } : r);
+    });
     setShowUndo(true);
     setTimeout(() => setShowUndo(false), 4000);
-  }, [completed, phase]);
+  }, [phase]);
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
-  const fmtTime = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+  // ── Helpers ──────────────────────────────────────────────────────────────
+  const fmtTime = (s: number) =>
+    `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
   const issue = ISSUES[currentIdx] ?? ISSUES[0];
 
-  const stepStatus = (target: Phase | "issue", sub?: IssueStep): "pending" | "active" | "done" => {
+  const stepStatus = (target: Phase): "pending" | "active" | "done" => {
     if (phase === "idle") return "pending";
     const order: Phase[] = ["scanning", "issue", "verifying", "complete"];
     const cur = order.indexOf(phase);
-    const tgt = order.indexOf(target as Phase);
+    const tgt = order.indexOf(target);
     if (tgt < cur) return "done";
     if (tgt > cur) return "pending";
     return "active";
@@ -507,12 +530,12 @@ export default function RepairEngine() {
 
   const activeRepairs = completed.filter((r) => !r.undone);
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // ── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
 
-      {/* ── Header ──────────────────────────────────────────────────────────── */}
+      {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-start gap-4">
           <div className="p-3 rounded-xl bg-primary/10 border border-primary/20">
@@ -543,18 +566,16 @@ export default function RepairEngine() {
           <div className="flex items-center gap-2">
             <button
               onClick={handleUndo}
-              disabled={completed.filter((r) => !r.undone).length === 0}
+              disabled={activeRepairs.length === 0}
               className="flex items-center gap-2 bg-secondary hover:bg-muted border border-border px-4 py-2 rounded-lg font-mono text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <RotateCcw className="w-4 h-4" />
-              UNDO LAST
+              <RotateCcw className="w-4 h-4" /> UNDO LAST
             </button>
             <button
               onClick={startRepair}
               className="flex items-center gap-2 bg-primary/20 hover:bg-primary/30 border border-primary/30 text-primary px-4 py-2 rounded-lg font-mono text-sm font-bold transition-all"
             >
-              <Play className="w-4 h-4" />
-              RUN AGAIN
+              <Play className="w-4 h-4" /> RUN AGAIN
             </button>
           </div>
         ) : (
@@ -565,30 +586,14 @@ export default function RepairEngine() {
         )}
       </div>
 
-      {/* ── Stats Row ───────────────────────────────────────────────────────── */}
+      {/* Stats Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          {
-            icon: AlertTriangle, label: "Issues Found",
-            value: phase === "idle" ? "—" : ISSUES.length,
-            color: "text-orange-400", bg: "bg-orange-400/10 border-orange-400/20",
-          },
-          {
-            icon: ShieldCheck, label: "Repaired",
-            value: phase === "idle" ? "—" : activeRepairs.length,
-            color: "text-emerald-400", bg: "bg-emerald-400/10 border-emerald-400/20",
-          },
-          {
-            icon: TrendingUp, label: "Score Gain",
-            value: phase === "idle" ? "—" : (totalScore > 0 ? `+${totalScore}` : "0"),
-            color: "text-primary", bg: "bg-primary/10 border-primary/20",
-          },
-          {
-            icon: Clock, label: "Elapsed",
-            value: phase === "idle" ? "—" : fmtTime(elapsed),
-            color: "text-blue-400", bg: "bg-blue-400/10 border-blue-400/20",
-          },
-        ].map(({ icon: Icon, label, value, color, bg }) => (
+        {([
+          { icon: AlertTriangle, label: "Issues Found",  value: phase === "idle" ? "—" : String(ISSUES.length), color: "text-orange-400", bg: "bg-orange-400/10 border-orange-400/20" },
+          { icon: ShieldCheck,   label: "Repaired",      value: phase === "idle" ? "—" : String(activeRepairs.length), color: "text-emerald-400", bg: "bg-emerald-400/10 border-emerald-400/20" },
+          { icon: TrendingUp,    label: "Score Gain",    value: phase === "idle" ? "—" : (totalScore > 0 ? "+" + totalScore : "0"), color: "text-primary", bg: "bg-primary/10 border-primary/20" },
+          { icon: Clock,         label: "Elapsed",       value: phase === "idle" ? "—" : fmtTime(elapsed), color: "text-blue-400", bg: "bg-blue-400/10 border-blue-400/20" },
+        ] as const).map(({ icon: Icon, label, value, color, bg }) => (
           <div key={label} className={cn("rounded-xl border p-5 flex flex-col gap-2", bg)}>
             <div className="flex items-center justify-between">
               <span className="text-xs font-mono text-muted-foreground uppercase tracking-widest">{label}</span>
@@ -599,25 +604,27 @@ export default function RepairEngine() {
         ))}
       </div>
 
-      {/* ── Main Panel ──────────────────────────────────────────────────────── */}
+      {/* Main workflow panel */}
       {phase !== "idle" && (
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
 
-          {/* Left: Workflow steps */}
+          {/* Left: steps */}
           <div className="lg:col-span-2 bg-card border border-border rounded-xl p-5 space-y-1">
             <h3 className="text-xs font-mono text-muted-foreground uppercase tracking-widest mb-4">
               Repair Workflow
             </h3>
-            <StepRow icon={Terminal}      label="1. Code Analysis"           status={stepStatus("scanning")} />
+            <StepRow icon={Terminal}     label="1. Code Analysis"        status={stepStatus("scanning")} />
+
+            {/* Per-file progress */}
             <div className="ml-4 space-y-1 border-l border-border pl-4 py-1">
               {ISSUES.map((iss, i) => {
-                const isDone = completed.some((r) => r.issue.id === iss.id);
+                const isDone   = completed.some((r) => r.issue.id === iss.id);
                 const isActive = phase === "issue" && currentIdx === i;
                 return (
                   <div key={iss.id} className={cn(
                     "flex items-center gap-2 px-3 py-2 rounded text-xs font-mono transition-all",
                     isDone   ? "text-emerald-400" :
-                    isActive ? "text-primary bg-primary/5 border border-primary/20 rounded" :
+                    isActive ? "text-primary bg-primary/5 border border-primary/20" :
                                "text-muted-foreground/40"
                   )}>
                     {isDone   ? <CheckCircle2 className="w-3 h-3 flex-shrink-0" /> :
@@ -629,16 +636,17 @@ export default function RepairEngine() {
                 );
               })}
             </div>
-            <StepRow icon={Cpu}           label="2. AI Repair Generation"    status={phase === "issue" ? "active" : stepStatus("issue")} />
-            <StepRow icon={Wrench}        label="3. Apply Patches"            status={phase === "issue" && issueStep === "applying" ? "active" : (phase === "verifying" || phase === "complete") ? "done" : "pending"} />
-            <StepRow icon={FlaskConical}  label="4. Verification"             status={stepStatus("verifying")} />
-            <StepRow icon={ShieldCheck}   label="5. Complete"                 status={stepStatus("complete")} />
+
+            <StepRow icon={Cpu}          label="2. AI Repair Generation" status={phase === "issue" ? "active" : stepStatus("issue")} />
+            <StepRow icon={Wrench}       label="3. Apply Patches"        status={phase === "issue" && issueStep === "applying" ? "active" : (phase === "verifying" || phase === "complete") ? "done" : "pending"} />
+            <StepRow icon={FlaskConical} label="4. Verification"         status={stepStatus("verifying")} />
+            <StepRow icon={ShieldCheck}  label="5. Complete"             status={stepStatus("complete")} />
           </div>
 
-          {/* Right: Live output */}
+          {/* Right: live output */}
           <div className="lg:col-span-3 space-y-4">
 
-            {/* Scanning terminal */}
+            {/* Scanner terminal */}
             {phase === "scanning" && (
               <div className="bg-black/80 border border-border rounded-xl overflow-hidden">
                 <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-secondary/30">
@@ -652,17 +660,18 @@ export default function RepairEngine() {
                   </div>
                 </div>
                 <div ref={terminalRef} className="h-64 overflow-y-auto p-4 space-y-0.5 text-xs font-mono">
-                  {scanLines.map((line, i) => (
-                    <div key={i} className={cn(
-                      "leading-relaxed",
-                      line.includes("⚠") ? "text-red-400 font-bold" : "text-emerald-400/80"
-                    )}>
-                      {line}
-                    </div>
-                  ))}
-                  {scanProgress < 100 && (
-                    <div className="text-primary animate-pulse">█</div>
-                  )}
+                  {scanLines.map((line, i) => {
+                    const safeL = line ?? "";
+                    return (
+                      <div key={i} className={cn(
+                        "leading-relaxed",
+                        safeL.includes("⚠") ? "text-red-400 font-bold" : "text-emerald-400/80"
+                      )}>
+                        {safeL}
+                      </div>
+                    );
+                  })}
+                  {scanProgress < 100 && <div className="text-primary animate-pulse">█</div>}
                 </div>
               </div>
             )}
@@ -670,14 +679,11 @@ export default function RepairEngine() {
             {/* Issue repair panel */}
             {phase === "issue" && (
               <div className="bg-card border border-border rounded-xl overflow-hidden">
-                {/* Issue header */}
                 <div className="px-5 py-4 border-b border-border bg-secondary/30 flex items-start justify-between gap-4">
                   <div>
                     <div className="flex items-center gap-2 mb-1">
                       <SeverityPill s={issue.severity} />
-                      <span className="text-xs font-mono text-muted-foreground">
-                        {issue.file}:{issue.line}
-                      </span>
+                      <span className="text-xs font-mono text-muted-foreground">{issue.file}:{issue.line}</span>
                     </div>
                     <h3 className="font-bold text-foreground">{issue.title}</h3>
                     <p className="text-xs text-muted-foreground mt-1">{issue.description}</p>
@@ -688,7 +694,7 @@ export default function RepairEngine() {
                 </div>
 
                 <div className="p-5 space-y-4">
-                  {/* Analyzing */}
+                  {/* AI thinking spinner */}
                   {(issueStep === "analyzing" || issueStep === "generating") && (
                     <div className="flex flex-col items-center justify-center py-10 gap-5">
                       <div className="relative">
@@ -703,14 +709,14 @@ export default function RepairEngine() {
                         </p>
                         <p className="font-mono text-xs text-muted-foreground">
                           {issueStep === "analyzing"
-                            ? `Cross-referencing CWE-${issue.id === 1 ? "798" : issue.id === 2 ? "89" : issue.id === 3 ? "306" : issue.id === 4 ? "209" : "307"} patterns`
+                            ? `Cross-referencing CWE patterns for issue ${issue.id} of ${ISSUES.length}`
                             : "Synthesising idiomatic, tested replacement…"}
                         </p>
                       </div>
                     </div>
                   )}
 
-                  {/* Diff view */}
+                  {/* Code diff */}
                   {(issueStep === "diffing" || issueStep === "applying" || issueStep === "done") && (
                     <div>
                       <div className="flex items-center gap-2 mb-3">
@@ -721,8 +727,6 @@ export default function RepairEngine() {
                         <CodeBlock code={issue.beforeCode} label="VULNERABLE (original)" variant="before" />
                         <CodeBlock code={issue.afterCode}  label="SECURE (AI repair)"    variant="after"  />
                       </div>
-
-                      {/* AI explanation */}
                       <div className="mt-3 bg-primary/5 border border-primary/20 rounded-lg p-4">
                         <div className="flex items-center gap-2 mb-2">
                           <Cpu className="w-3.5 h-3.5 text-primary" />
@@ -733,13 +737,13 @@ export default function RepairEngine() {
                     </div>
                   )}
 
-                  {/* Apply steps */}
+                  {/* Apply sub-steps */}
                   {issueStep === "applying" && (
                     <div className="bg-black/40 border border-border rounded-lg p-4 space-y-2">
                       {APPLY_STEPS.map((step, i) => (
                         <div key={i} className={cn(
                           "flex items-center gap-3 text-xs font-mono transition-all",
-                          i < applyStep  ? "text-emerald-400" :
+                          i < applyStep   ? "text-emerald-400" :
                           i === applyStep ? "text-primary animate-pulse" :
                                            "text-muted-foreground/30"
                         )}>
@@ -755,7 +759,7 @@ export default function RepairEngine() {
               </div>
             )}
 
-            {/* Verification panel */}
+            {/* Verification terminal */}
             {phase === "verifying" && (
               <div className="bg-black/80 border border-border rounded-xl overflow-hidden">
                 <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-secondary/30">
@@ -769,14 +773,15 @@ export default function RepairEngine() {
                   </div>
                 </div>
                 <div ref={terminalRef} className="h-56 overflow-y-auto p-4 space-y-1 text-xs font-mono">
-                  {verifyLines.map((line, i) => (
-                    <div key={i} className={cn(
-                      "flex items-center gap-2",
-                      line.includes("passed") || line.includes("Passed") ? "text-emerald-400 font-bold" : "text-blue-400/80"
-                    )}>
-                      {(line.includes("passed") || line.includes("Passed")) ? "✓" : "›"} {line}
-                    </div>
-                  ))}
+                  {verifyLines.map((line, i) => {
+                    const safeL = line ?? "";
+                    const isPassed = safeL.includes("passed") || safeL.includes("Passed");
+                    return (
+                      <div key={i} className={cn("flex items-center gap-2", isPassed ? "text-emerald-400 font-bold" : "text-blue-400/80")}>
+                        {isPassed ? "✓" : "›"} {safeL}
+                      </div>
+                    );
+                  })}
                   {verifyProgress < 100 && <div className="text-blue-400 animate-pulse">█</div>}
                 </div>
               </div>
@@ -789,7 +794,7 @@ export default function RepairEngine() {
                   <ShieldCheck className="w-7 h-7 text-emerald-400" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-lg font-bold text-emerald-400 mb-1">All Repairs Complete & Verified</h3>
+                  <h3 className="text-lg font-bold text-emerald-400 mb-1">All Repairs Complete &amp; Verified</h3>
                   <p className="text-sm text-muted-foreground font-mono">
                     {activeRepairs.length} vulnerabilities patched · Security score improved by +{totalScore} points · All tests passing
                   </p>
@@ -801,7 +806,7 @@ export default function RepairEngine() {
         </div>
       )}
 
-      {/* ── Idle splash ─────────────────────────────────────────────────────── */}
+      {/* Idle splash */}
       {phase === "idle" && (
         <div className="bg-card border border-border rounded-xl p-10 flex flex-col items-center text-center gap-6 relative overflow-hidden">
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(20,184,100,0.04),transparent_70%)]" />
@@ -841,7 +846,7 @@ export default function RepairEngine() {
         </div>
       )}
 
-      {/* ── Repair History ───────────────────────────────────────────────────── */}
+      {/* Repair History */}
       {completed.length > 0 && (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
           <div className="px-5 py-4 border-b border-border flex items-center gap-3">
@@ -859,9 +864,7 @@ export default function RepairEngine() {
               )}>
                 <div className={cn(
                   "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border",
-                  repair.undone
-                    ? "bg-gray-500/10 border-gray-500/20"
-                    : "bg-emerald-500/10 border-emerald-500/20"
+                  repair.undone ? "bg-gray-500/10 border-gray-500/20" : "bg-emerald-500/10 border-emerald-500/20"
                 )}>
                   {repair.undone
                     ? <X className="w-3.5 h-3.5 text-gray-400" />
@@ -875,15 +878,10 @@ export default function RepairEngine() {
                   <div className="flex items-center gap-3 mt-0.5">
                     <span className="text-xs font-mono text-muted-foreground">{repair.issue.file}</span>
                     <span className="text-xs text-muted-foreground">·</span>
-                    <span className="text-xs text-muted-foreground font-mono">
-                      {repair.timestamp.toLocaleTimeString()}
-                    </span>
+                    <span className="text-xs text-muted-foreground font-mono">{repair.timestamp.toLocaleTimeString()}</span>
                   </div>
                 </div>
-                <div className={cn(
-                  "font-mono font-bold text-sm flex-shrink-0",
-                  repair.undone ? "text-gray-400" : "text-emerald-400"
-                )}>
+                <div className={cn("font-mono font-bold text-sm flex-shrink-0", repair.undone ? "text-gray-400" : "text-emerald-400")}>
                   {repair.undone ? "—" : `+${repair.issue.scoreGain} pts`}
                 </div>
               </div>
@@ -892,7 +890,7 @@ export default function RepairEngine() {
         </div>
       )}
 
-      {/* ── Code Changes Timeline ────────────────────────────────────────────── */}
+      {/* Score Timeline */}
       {phase === "complete" && (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
           <div className="px-5 py-4 border-b border-border flex items-center gap-3">
@@ -902,22 +900,26 @@ export default function RepairEngine() {
           <div className="p-5">
             <div className="flex items-end gap-2 h-28">
               {(() => {
-                const points = [0, ...ISSUES.map((_, i) =>
-                  ISSUES.slice(0, i + 1).reduce((s, iss) => s + iss.scoreGain, 0)
-                )];
+                const cumulativePoints = ISSUES.map((_, i) =>
+                  ISSUES.slice(0, i + 1).reduce((acc, iss) => acc + iss.scoreGain, 0)
+                );
+                const points = [0, ...cumulativePoints];
                 const max = points[points.length - 1] || 1;
-                const labels = ["Start", ...ISSUES.map((iss) => iss.file.split("/").pop()!.replace(".js", ""))];
+                const labels = ["Start", ...ISSUES.map((iss) => {
+                  const parts = (iss.file ?? "").split("/");
+                  return (parts[parts.length - 1] ?? "").replace(".js", "");
+                })];
                 return points.map((val, i) => (
                   <div key={i} className="flex-1 flex flex-col items-center gap-1.5">
                     <span className="text-[10px] font-mono text-primary font-bold">
                       {val > 0 ? `+${val}` : ""}
                     </span>
                     <div
-                      className="w-full rounded-t-sm transition-all duration-700 bg-primary/70"
+                      className="w-full rounded-t-sm bg-primary/70 transition-all duration-700"
                       style={{ height: `${Math.max(4, (val / max) * 80)}px` }}
                     />
                     <span className="text-[9px] font-mono text-muted-foreground text-center truncate w-full">
-                      {labels[i]}
+                      {labels[i] ?? ""}
                     </span>
                   </div>
                 ));
@@ -927,7 +929,7 @@ export default function RepairEngine() {
         </div>
       )}
 
-      {/* ── Undo toast ───────────────────────────────────────────────────────── */}
+      {/* Undo toast */}
       <div className={cn(
         "fixed bottom-6 right-6 flex items-center gap-3 bg-card border border-border rounded-xl px-5 py-4 shadow-2xl transition-all duration-500 z-50",
         showUndo ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
