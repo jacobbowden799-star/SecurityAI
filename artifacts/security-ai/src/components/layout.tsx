@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Shield, LayoutDashboard, Search, FileText, Bot, AlertTriangle } from "lucide-react";
+import { Shield, LayoutDashboard, Search, FileText, Bot, Cpu } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { href: "/scans", label: "Scans", icon: Search },
   { href: "/reports", label: "Reports", icon: FileText },
   { href: "/chat", label: "AI Assistant", icon: Bot },
+  { href: "/repair", label: "Code Repair", icon: Cpu, badge: "AI" },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -40,6 +41,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 >
                   <Icon className="w-4 h-4" />
                   {item.label}
+                  {'badge' in item && (item as any).badge && (
+                    <span className="ml-auto px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-primary/20 text-primary border border-primary/30 tracking-widest">
+                      {(item as any).badge}
+                    </span>
+                  )}
                 </div>
               </Link>
             );

@@ -11,6 +11,7 @@ import ScanDetail from '@/pages/scans/[id]';
 import Reports from '@/pages/reports/index';
 import ReportDetail from '@/pages/reports/[id]';
 import ChatAssistant from '@/pages/chat';
+import RepairEngine from '@/pages/repair';
 import NotFound from '@/pages/not-found';
 
 const queryClient = new QueryClient();
@@ -26,6 +27,7 @@ function Router() {
         <Route path="/reports" component={Reports} />
         <Route path="/reports/:id" component={ReportDetail} />
         <Route path="/chat" component={ChatAssistant} />
+        <Route path="/repair" component={RepairEngine} />
         <Route component={NotFound} />
       </Switch>
     </Layout>
